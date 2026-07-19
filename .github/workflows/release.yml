@@ -1,0 +1,64 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build all platforms
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            export GOOS=${target%/*} GOARCH=${target#*/}
+            out="mcs-panel_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}"
+            mkdir -p "dist/$out"
+            ext=""
+            guiflags=""
+            if [ "$GOOS" = "windows" ]; then
+              ext=".exe"
+              guiflags="-H windowsgui"
+            fi
+            echo "== $target headless"
+            go build -trimpath -ldflags="-s -w" -o "dist/$out/mcs-panel$ext" ./cmd/mcs-panel
+            echo "== $target gui"
+            go build -trimpath -tags webview -ldflags="-s -w $guiflags" -o "dist/$out/mcs-panel-gui$ext" ./cmd/mcs-panel
+            if [ "$GOOS" = "windows" ]; then
+              (cd dist && zip -qr "$out.zip" "$out")
+            else
+              tar -C dist -czf "dist/$out.tar.gz" "$out"
+            fi
+            rm -r "dist/$out"
+          done
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          ls -lh dist
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+          body: |
+            每个压缩包内含两个可执行文件:
+            - `mcs-panel-gui` — 窗口版。Windows 弹出 WebView2 面板窗口(关窗即退出);Linux / macOS 自动打开浏览器。
+            - `mcs-panel` — server 版(headless)。控制台运行,浏览器访问 http://127.0.0.1:8145,适合挂机 / 远程 / 开机自启。
+
+            Windows 下载 `windows_amd64.zip`(Apple 芯片 Mac 选 `darwin_arm64`,树莓派等选 `linux_arm64`)。
+            解压后双击(或终端运行)即可,数据保存在程序旁的 `data/` 目录。

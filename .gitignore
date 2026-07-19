@@ -2,5 +2,5 @@
 *.exe~
 data/
 panel.log
-docs/node_modules/
+scripts/node_modules/
 PRODUCT.md

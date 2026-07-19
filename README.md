@@ -71,10 +71,10 @@ Modrinth 搜索安装,按实例的版本和加载器过滤,不兼容有红黄标
 
 ## 使用
 
-1. 下载 `mcs-panel-gui.exe`(窗口版)或 `mcs-panel.exe`(server 版),放到任意文件夹
-2. 双击运行。窗口版直接弹出面板窗口;server 版用浏览器打开 http://127.0.0.1:8145
+1. 从 [Releases](https://github.com/Heartestrella/MCS/releases) 下载对应平台的压缩包(Windows / Linux / macOS,x64 与 arm64 都有)
+2. 解压,双击运行。`mcs-panel-gui` 是窗口版,直接弹出面板窗口(非 Windows 平台打开系统浏览器);`mcs-panel` 是 server 版,控制台运行后用浏览器打开 http://127.0.0.1:8145
 
-两个版本功能一致:窗口版是独立窗口(WebView2,Win10 21H1+ 自带,缺失时回落到系统浏览器),关窗即退出;server 版是控制台程序,适合挂机和开机自启。
+两个版本功能一致:窗口版适合日常在自己电脑上开服,关窗即退出;server 版适合挂机和开机自启。Windows 窗口版用 WebView2(Win10 21H1+ 自带,缺失时回落到系统浏览器)。
 
 所有数据(服务器、Java、备份、配置)都在 exe 旁的 `data/` 目录,拷走整个文件夹即完成迁移。
 
@@ -89,17 +89,17 @@ Modrinth 搜索安装,按实例的版本和加载器过滤,不兼容有红黄标
 ## 构建
 
 ```
-build.bat
+build.bat        # Windows 一键出两个 exe
 ```
 
-或手动:
+或手动(全平台可交叉编译,无 CGO):
 
 ```
-go build -o mcs-panel.exe .
-go build -tags webview -ldflags="-H windowsgui" -o mcs-panel-gui.exe .
+go build -o mcs-panel ./cmd/mcs-panel
+go build -tags webview -ldflags="-H windowsgui" -o mcs-panel-gui.exe ./cmd/mcs-panel   # Windows 窗口版
 ```
 
-无 CGO,Windows x64。
+目录结构:`cmd/mcs-panel` 入口,`internal/server` 全部后端逻辑,`web/` 内嵌前端,`docs/` 文档与截图,`scripts/` 截图与 e2e 脚本。推 `v*` tag 会由 GitHub Actions 自动构建全平台压缩包并发布到 Releases。
 
 ## HTTP API
 
