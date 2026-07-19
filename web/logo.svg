@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- MCS Space logo：等距「世界方块」——绿色草方块顶面 + 蓝紫夜色侧面 -->
+  <defs>
+    <linearGradient id="t" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8dffc4"/><stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <linearGradient id="l" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a7dff"/><stop offset="1" stop-color="#3350c0"/>
+    </linearGradient>
+    <linearGradient id="r" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#33377e"/><stop offset="1" stop-color="#22245a"/>
+    </linearGradient>
+  </defs>
+  <polygon points="32,6 56,19 32,32 8,19" fill="url(#t)"/>
+  <polygon points="8,19 32,32 32,58 8,45" fill="url(#l)"/>
+  <polygon points="56,19 32,32 32,58 56,45" fill="url(#r)"/>
+</svg>

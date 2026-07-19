@@ -1,0 +1,4559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCS · Server Space</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cdefs%3E%3ClinearGradient%20id='t'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%238dffc4'/%3E%3Cstop%20offset='1'%20stop-color='%2334d399'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='l'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%234a7dff'/%3E%3Cstop%20offset='1'%20stop-color='%233350c0'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='r'%20x1='0'%20y1='0'%20x2='0'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%2333377e'/%3E%3Cstop%20offset='1'%20stop-color='%2322245a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20x='1'%20y='1'%20width='62'%20height='62'%20rx='14'%20fill='%2312122b'/%3E%3Cg%20transform='translate(32,32)%20scale(.78)%20translate(-32,-32)'%3E%3Cpolygon%20points='32,6%2056,19%2032,32%208,19'%20fill='url(%23t)'/%3E%3Cpolygon%20points='8,19%2032,32%2032,58%208,45'%20fill='url(%23l)'/%3E%3Cpolygon%20points='56,19%2032,32%2032,58%2056,45'%20fill='url(%23r)'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: radial-gradient(ellipse at 20% -10%, #2a1d5e 0%, #0d0b1e 45%, #050510 100%);
+    color: #e6e4f0;
+    overflow-x: hidden;
+  }
+  .cube {
+    position: fixed;
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, rgba(120,255,180,.12), rgba(120,140,255,.06));
+    border: 1px solid rgba(255,255,255,.06);
+    transform: rotate(45deg);
+    animation: float 14s ease-in-out infinite;
+    z-index: 0;
+  }
+  @keyframes float { 50% { transform: rotate(50deg) translateY(-30px); } }
+
+  .wrap { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  nav { display: flex; align-items: center; gap: 12px; margin-bottom: 48px; }
+  nav .logo { width: 38px; height: 38px; display: block; flex: none; }
+  .modal-logo { width: 46px; height: 46px; display: block; margin: 0 auto 12px; }
+  nav .brand { font-size: 18px; font-weight: 700; letter-spacing: .5px; }
+  nav .links { margin-left: auto; display: flex; gap: 28px; font-size: 14px; color: #9a96b8; }
+  nav .links span { cursor: pointer; transition: color .2s; padding-bottom: 4px; border-bottom: 2px solid transparent; }
+  nav .links span:hover { color: #fff; }
+  nav .links span.active { color: #6affb0; border-bottom-color: #6affb0; }
+  nav .avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: linear-gradient(135deg, #ff8a5c, #ff5c8a);
+    margin-left: 8px;
+  }
+
+  .page { display: none; }
+  .page.show { display: block; }
+
+  /* ===== 主页：顶部问候栏 + 左世界列表 / 右状态栏 ===== */
+  .home-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 14px 20px; flex-wrap: wrap; margin-bottom: 26px;
+  }
+  .home-head h1 {
+    font-size: 30px; font-weight: 800; letter-spacing: -.5px;
+    background: linear-gradient(90deg, #fff, #a8ffd8 60%, #8ab4ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .home-head p { color: #9a96b8; margin-top: 6px; font-size: 14px; }
+  .home-head .quick { display: flex; gap: 10px; }
+
+  .home-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 26px;
+    align-items: start;
+  }
+  .home-side { min-width: 0; }
+  .home-side .perf-card { margin-bottom: 26px; padding: 14px; }
+  .home-side .perf-card canvas { height: 120px; }
+  .home-side .perf-legend { gap: 8px 14px; margin-top: 10px; }
+  .home-side .perf-item { min-width: 126px; }
+  .home-side .perf-side { margin-left: 0; width: 100%; gap: 20px; }
+  .home-side .activity { margin-top: 0; }
+  .home-side .feed { padding: 10px 14px; font-size: 13px; }
+  @media (max-width: 1080px) {
+    .home-layout { grid-template-columns: 1fr; }
+    .home-side .perf-card canvas { height: 140px; }
+  }
+
+  .hero { text-align: center; margin-bottom: 40px; }
+  .hero h1 {
+    font-size: 40px; font-weight: 800; letter-spacing: -1px;
+    background: linear-gradient(90deg, #fff, #a8ffd8 60%, #8ab4ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p { color: #9a96b8; margin-top: 12px; font-size: 16px; }
+  .hero .quick { margin-top: 24px; display: inline-flex; gap: 12px; }
+  .qbtn {
+    padding: 12px 26px; border-radius: 14px; border: none; cursor: pointer;
+    font-size: 15px; font-weight: 600; transition: transform .15s, box-shadow .15s;
+    font-family: inherit;
+  }
+  .qbtn.main {
+    background: linear-gradient(135deg, #6affb0, #34d399);
+    color: #05130c;
+    box-shadow: 0 8px 30px rgba(106,255,176,.25);
+  }
+  .qbtn.ghost {
+    background: rgba(255,255,255,.06); color: #e6e4f0;
+    border: 1px solid rgba(255,255,255,.12);
+  }
+  .qbtn:hover { transform: translateY(-2px); }
+  .qbtn:disabled { opacity: .5; cursor: default; transform: none; }
+  .qbtn.sm { padding: 8px 16px; font-size: 13px; border-radius: 10px; }
+
+  /* ===== 系统状态（多彩折线图） ===== */
+  .perf-card {
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 18px; padding: 16px 18px;
+    margin-bottom: 36px;
+  }
+  .perf-card canvas { display: block; width: 100%; height: 180px; border-radius: 10px; }
+  .perf-legend { display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 12px; align-items: center; }
+  .perf-item { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+  .perf-item .dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .perf-item .lk { font-size: 12px; color: #9a96b8; letter-spacing: .5px; }
+  .perf-item .lv { font-size: 16px; font-weight: 700; }
+  .perf-item .lsub { font-size: 11px; color: #6e6a8e; }
+  .perf-side { margin-left: auto; display: flex; gap: 26px; }
+  .perf-side .lv { font-size: 15px; font-weight: 700; }
+
+  .worlds { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+  .world {
+    border-radius: 22px;
+    background: rgba(255,255,255,.05);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,.09);
+    overflow: hidden;
+    transition: transform .2s, border-color .2s, box-shadow .2s;
+  }
+  .world:hover {
+    transform: translateY(-6px);
+    border-color: rgba(106,255,176,.4);
+    box-shadow: 0 20px 50px rgba(0,0,0,.4);
+  }
+  .world .banner {
+    height: 120px;
+    position: relative;
+    display: flex; align-items: flex-end; padding: 14px;
+    cursor: pointer;
+  }
+  .banner.b1 { background: linear-gradient(135deg, #2c7a4b, #1a4d30); }
+  .banner.b2 { background: linear-gradient(135deg, #4a5bbf, #2a2a6e); }
+  .banner.b3 { background: linear-gradient(135deg, #b45309, #7c2d12); }
+  .status-pill {
+    position: absolute; top: 12px; right: 12px;
+    font-size: 12px; padding: 4px 12px; border-radius: 20px;
+    backdrop-filter: blur(6px); font-weight: 600;
+  }
+  .pill-on { background: rgba(52,211,153,.2); color: #6affb0; border: 1px solid rgba(106,255,176,.35); }
+  .pill-off { background: rgba(255,255,255,.1); color: #b8b4d0; border: 1px solid rgba(255,255,255,.15); }
+  .pill-busy { background: rgba(255,184,106,.15); color: #ffb86a; border: 1px solid rgba(255,184,106,.35); }
+  .pill-err { background: rgba(255,92,138,.15); color: #ff5c8a; border: 1px solid rgba(255,92,138,.35); }
+  .banner .wname { font-size: 20px; font-weight: 700; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
+
+  .world .body { padding: 16px; }
+  .dl-prog { margin-top: 10px; }
+  .dl-prog .dl-label { font-size: 12px; color: #ffb86a; margin-bottom: 5px; display:flex; justify-content:space-between; }
+  .dl-prog .dl-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
+  .dl-prog .dl-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg,#ffb86a,#ff9a5c); transition: width .3s; }
+  .dl-prog .dl-fill.indet { width: 30% !important; animation: dl-slide 1.2s ease-in-out infinite alternate; }
+  @keyframes dl-slide { from { margin-left: 0; } to { margin-left: 70%; } }
+  .tags { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tag {
+    font-size: 12px; color: #b8b4d0;
+    background: rgba(255,255,255,.07); border-radius: 8px; padding: 3px 10px;
+  }
+  .row { display: flex; align-items: center; justify-content: space-between; }
+  .players .cnt { font-size: 13px; color: #9a96b8; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .play-btn {
+    padding: 8px 20px; border-radius: 12px; cursor: pointer;
+    font-weight: 700; font-size: 14px; font-family: inherit;
+    background: rgba(106,255,176,.12); color: #6affb0;
+    border: 1px solid rgba(106,255,176,.3);
+    transition: all .2s;
+  }
+  .play-btn:hover { background: #6affb0; color: #05130c; }
+  .play-btn.off { background: rgba(255,255,255,.06); color: #9a96b8; border-color: rgba(255,255,255,.12); }
+  .play-btn.off:hover { background: rgba(255,255,255,.15); color: #fff; }
+  .play-btn.danger { background: rgba(255,92,138,.1); color: #ff5c8a; border-color: rgba(255,92,138,.3); }
+  .play-btn.danger:hover { background: #ff5c8a; color: #fff; }
+  .play-btn:disabled { opacity: .5; cursor: default; }
+
+  .world.new {
+    display: grid; place-items: center; min-height: 250px;
+    border-style: dashed; border-color: rgba(255,255,255,.15);
+    background: transparent; color: #9a96b8; cursor: pointer;
+  }
+  .world.new:hover { color: #6affb0; border-color: rgba(106,255,176,.4); }
+  .world.new .plus { font-size: 42px; font-weight: 200; text-align: center; }
+  .world.new .txt { font-size: 14px; margin-top: 8px; }
+
+  .activity { margin-top: 48px; }
+  .activity h3, .section-title { font-size: 15px; color: #9a96b8; font-weight: 600; margin-bottom: 18px; letter-spacing: 1px; }
+  .feed {
+    display: flex; gap: 14px; align-items: center;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 16px; padding: 12px 18px; margin-bottom: 10px;
+    font-size: 14px;
+  }
+  .feed .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .dot.green { background: #34d399; box-shadow: 0 0 8px rgba(52,211,153,.6); }
+  .dot.blue { background: #5a8cff; box-shadow: 0 0 8px rgba(90,140,255,.6); }
+  .dot.orange { background: #ffb86a; box-shadow: 0 0 8px rgba(255,184,106,.6); }
+  .feed .when { margin-left: auto; color: #6e6a8e; font-size: 12px; flex-shrink: 0; }
+  .feed b { color: #fff; font-weight: 600; }
+  .empty-hint { color: #6e6a8e; text-align: center; padding: 30px; font-size: 14px; }
+
+  /* ===== 全局表单控件 ===== */
+  input, select, textarea {
+    padding: 10px 14px; border-radius: 12px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+    color: #e6e4f0; font-size: 14px; outline: none; font-family: inherit;
+    transition: border-color .15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: rgba(106,255,176,.5); }
+  input[type=checkbox] { padding: 0; width: 16px; height: 16px; accent-color: #6affb0; cursor: pointer; }
+  select option { background: #16142e; color: #e6e4f0; }
+  ::placeholder { color: #6e6a8e; }
+
+  /* ===== 模组市场 ===== */
+  .mod-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+  .mod-toolbar input[type=search] { flex: 1; min-width: 220px; }
+  .mod-toolbar select option, .modal select option { background: #14122b; }
+  .type-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .type-tab {
+    padding: 8px 18px; border-radius: 12px; font-size: 14px; cursor: pointer;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: #9a96b8;
+    font-family: inherit;
+  }
+  .type-tab.active { background: rgba(106,255,176,.12); color: #6affb0; border-color: rgba(106,255,176,.35); }
+
+  .mod-list { display: flex; flex-direction: column; gap: 12px; }
+  .mod-card {
+    display: flex; gap: 16px; align-items: flex-start;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09);
+    border-radius: 18px; padding: 16px;
+    transition: border-color .2s;
+  }
+  .mod-card:hover { border-color: rgba(106,255,176,.35); }
+  .mod-icon {
+    width: 56px; height: 56px; border-radius: 12px; flex-shrink: 0;
+    background: rgba(255,255,255,.08); object-fit: cover;
+    display: grid; place-items: center; font-weight: 800; font-size: 22px; color: #6affb0;
+  }
+  .mod-info { flex: 1; min-width: 0; }
+  .mod-title { font-size: 16px; font-weight: 700; }
+  .mod-title a { color: inherit; text-decoration: none; }
+  .mod-title a:hover { color: #6affb0; text-decoration: underline; }
+  .mod-title .by { font-size: 12px; color: #6e6a8e; font-weight: 400; margin-left: 8px; }
+  .mod-desc { font-size: 13px; color: #9a96b8; margin-top: 6px; line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .mod-meta { display: flex; gap: 12px; margin-top: 8px; font-size: 12px; color: #6e6a8e; flex-wrap: wrap; }
+  .mod-meta .side-ok { color: #6affb0; }
+  .mod-actions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+  .load-more { text-align: center; margin-top: 18px; }
+
+  /* ===== 备份 ===== */
+  .bk-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+  .set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; align-items: start; }
+  .set-row { display: flex; align-items: center; gap: 14px; }
+  .set-row .set-desc { flex: 1; min-width: 0; }
+  .set-row .set-desc b { display: block; font-size: 14px; color: #e6e4f0; }
+  .set-row .set-desc span { display: block; font-size: 12px; color: #6e6a8e; margin-top: 3px; line-height: 1.5; }
+  .set-row input[type=checkbox] { width: 18px; height: 18px; flex: none; }
+  @media (max-width: 820px) { .set-grid { grid-template-columns: 1fr; } }
+  .panel {
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09);
+    border-radius: 20px; padding: 22px;
+  }
+  .panel h4 { font-size: 15px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .panel h4 .hint { font-size: 12px; color: #6e6a8e; font-weight: 400; margin-left: auto; }
+  .bk-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 12px; margin-bottom: 8px;
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.06);
+    font-size: 14px; flex-wrap: wrap;
+  }
+  .bk-row .fname { font-weight: 600; word-break: break-all; }
+  .bk-row .fmeta { color: #6e6a8e; font-size: 12px; }
+  .bk-row .sp { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .dav-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .dav-form .full { grid-column: 1 / -1; }
+  .dav-form label { display: block; font-size: 13px; color: #9a96b8; margin-bottom: 6px; }
+  .dav-form input { width: 100%; }
+  .switch-row { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #b8b4d0; }
+
+  /* ===== 弹窗 ===== */
+  .overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(5,5,16,.7); backdrop-filter: blur(8px);
+    display: none; place-items: center;
+  }
+  .overlay.show { display: grid; }
+  .modal {
+    width: min(560px, 92vw);
+    max-height: 88vh; overflow-y: auto;
+    background: #14122b;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 22px; padding: 28px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.6);
+  }
+  .modal h2 { font-size: 20px; margin-bottom: 20px; }
+  .modal label { display: block; font-size: 13px; color: #9a96b8; margin: 14px 0 6px; }
+  .modal input, .modal select { width: 100%; }
+  .modal .actions { display: flex; gap: 12px; margin-top: 24px; justify-content: flex-end; }
+  .modal .err { color: #ff5c8a; font-size: 13px; margin-top: 12px; min-height: 18px; }
+
+  .console-modal { width: min(860px, 94vw); display: flex; flex-direction: column; }
+
+  /* ===== 实例详情页 ===== */
+  .inst-head {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09);
+    border-radius: 18px; padding: 16px 20px; margin-bottom: 18px;
+  }
+  .inst-head .back {
+    cursor: pointer; color: #9a96b8; font-size: 14px; padding: 6px 12px;
+    border-radius: 10px; border: 1px solid rgba(255,255,255,.1);
+    transition: color .2s, border-color .2s;
+  }
+  .inst-head .back:hover { color: #fff; border-color: rgba(255,255,255,.3); }
+  .inst-head h2 { font-size: 20px; font-weight: 700; }
+  .inst-head .meta { color: #6e6a8e; font-size: 12px; margin-top: 2px; }
+  .inst-layout { display: flex; gap: 18px; align-items: flex-start; }
+  .inst-side {
+    flex: none; width: 150px; display: flex; flex-direction: column; gap: 4px;
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 16px; padding: 8px; position: sticky; top: 16px;
+  }
+  .inst-side button {
+    text-align: left; padding: 10px 14px; border-radius: 10px; border: none;
+    background: transparent; color: #9a96b8; font-size: 13.5px; cursor: pointer;
+    font-family: inherit; transition: background .15s, color .15s;
+  }
+  .inst-side button:hover { background: rgba(255,255,255,.06); color: #fff; }
+  .inst-side button.active { background: rgba(106,255,176,.12); color: #6affb0; font-weight: 600; }
+  .inst-main {
+    flex: 1; min-width: 0;
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 16px; padding: 18px 20px;
+  }
+  @media (max-width: 760px) {
+    .inst-layout { flex-direction: column; }
+    .inst-side { width: 100%; flex-direction: row; flex-wrap: wrap; position: static; }
+  }
+  .console-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .console-head h2 { margin: 0; flex: 1; }
+  .console-head .close { cursor: pointer; color: #9a96b8; font-size: 22px; padding: 4px 10px; background: none; border: none; }
+  .console-head .close:hover { color: #fff; }
+  .console-out {
+    height: 420px; overflow-y: auto;
+    background: #0a0918; border: 1px solid rgba(255,255,255,.08);
+    border-radius: 14px; padding: 14px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;
+    color: #b8e6c8;
+  }
+  .console-out .warn { color: #ffb86a; }
+  .console-out .err-line { color: #ff5c8a; }
+  .console-out .cmd { color: #8ab4ff; }
+  .console-in { display: flex; gap: 10px; margin-top: 12px; }
+  .console-in input {
+    flex: 1; padding: 11px 14px; border-radius: 12px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+    color: #e6e4f0; font-family: Consolas, monospace; font-size: 14px; outline: none;
+  }
+  .console-in input:focus { border-color: rgba(106,255,176,.5); }
+  .pane-scroll { height: 420px; overflow-y: auto; }
+  /* 详情页内容区跟随页面滚动，去掉内层滚动条 */
+  .inst-main .pane-scroll { height: auto; max-height: none; overflow: visible; }
+  .inst-main label { display: block; font-size: 13px; color: #9a96b8; margin: 14px 0 8px; }
+  .inst-main .switch-row label, .inst-main .set-row label { display: inline; margin: 0; }
+  .quick-cmds { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .quick-cmds button {
+    padding: 6px 12px; border-radius: 10px; font-size: 12px; cursor: pointer;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+    color: #c8c4e0; transition: background .15s;
+  }
+  .quick-cmds button:hover { background: rgba(255,255,255,.12); }
+
+  .ver-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border-radius: 10px; background: rgba(255,255,255,.04); margin-bottom: 8px; font-size: 13px;
+    flex-wrap: wrap;
+  }
+  .ver-row .vmeta { color: #6e6a8e; font-size: 12px; }
+  .ver-row .sp { margin-left: auto; }
+
+  .toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    background: #1e1b3e; border: 1px solid rgba(255,255,255,.15);
+    padding: 12px 24px; border-radius: 14px; font-size: 14px; z-index: 100;
+    opacity: 0; transition: opacity .3s; pointer-events: none;
+    max-width: 80vw;
+  }
+  .toast.show { opacity: 1; }
+
+  /* ===== 移动端适配 ===== */
+  @media (max-width: 720px) {
+    .wrap { padding: 20px 14px 60px; }
+    nav { flex-wrap: wrap; margin-bottom: 28px; gap: 10px; }
+    nav .links { margin-left: 0; width: 100%; order: 3; gap: 0;
+      display: grid; grid-template-columns: repeat(4, 1fr); text-align: center;
+      background: rgba(255,255,255,.05); border-radius: 12px; padding: 6px; }
+    nav .links span { padding: 8px 4px; border-bottom: none; border-radius: 8px; }
+    nav .links span.active { background: rgba(106,255,176,.12); }
+    nav .avatar { margin-left: auto; }
+    .hero h1 { font-size: 28px; }
+    .hero p { font-size: 14px; padding: 0 8px; }
+    .hero .quick { flex-wrap: wrap; justify-content: center; }
+    .home-head { margin-bottom: 20px; }
+    .home-head h1 { font-size: 24px; }
+    .home-head .quick { width: 100%; }
+    .home-head .quick .qbtn { flex: 1; }
+    .qbtn { padding: 11px 20px; font-size: 14px; }
+    .perf-card { padding: 12px 14px; border-radius: 14px; }
+    .perf-card canvas { height: 130px; }
+    .perf-side { margin-left: 0; width: 100%; }
+    .worlds { grid-template-columns: 1fr; }
+    .mod-card { flex-wrap: wrap; }
+    .mod-actions { flex-direction: row; width: 100%; }
+    .mod-actions > * { flex: 1; }
+    .mod-toolbar select { flex: 1; min-width: 130px; }
+    .dav-form { grid-template-columns: 1fr; }
+    .bk-row .sp { margin-left: 0; width: 100%; }
+    .bk-row .sp > * { flex: 1; text-align: center; }
+    .modal { padding: 20px; border-radius: 18px; }
+    .console-out { height: 55vh; font-size: 12px; }
+    .console-head { flex-wrap: wrap; }
+    .console-head h2 { width: 100%; font-size: 17px; }
+    .feed { padding: 10px 14px; font-size: 13px; flex-wrap: wrap; }
+    .feed .when { width: 100%; margin-left: 24px; }
+    .row { flex-wrap: wrap; gap: 10px; }
+    .btns { width: 100%; }
+    .btns .play-btn { flex: 1; padding: 8px 6px; font-size: 13px; }
+    .cube { display: none; }
+  }
+  @media (max-width: 380px) {
+    .stats { grid-template-columns: 1fr 1fr; }
+    .hero h1 { font-size: 24px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cube { animation: none; }
+    * { transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="cube" style="top:15%; left:6%"></div>
+  <div class="cube" style="top:60%; left:90%; animation-delay:-4s; width:60px; height:60px"></div>
+  <div class="cube" style="top:80%; left:12%; animation-delay:-8s; width:26px; height:26px"></div>
+  <div class="cube" style="top:30%; left:82%; animation-delay:-2s"></div>
+
+  <div class="wrap">
+    <nav>
+      <svg class="logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="MCS Space">
+        <defs>
+          <linearGradient id="lgTop" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8dffc4"/><stop offset="1" stop-color="#34d399"/>
+          </linearGradient>
+          <linearGradient id="lgLeft" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#4a7dff"/><stop offset="1" stop-color="#3350c0"/>
+          </linearGradient>
+          <linearGradient id="lgRight" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#33377e"/><stop offset="1" stop-color="#22245a"/>
+          </linearGradient>
+        </defs>
+        <polygon points="32,6 56,19 32,32 8,19" fill="url(#lgTop)"/>
+        <polygon points="8,19 32,32 32,58 8,45" fill="url(#lgLeft)"/>
+        <polygon points="56,19 32,32 32,58 56,45" fill="url(#lgRight)"/>
+      </svg>
+      <div class="brand">MCS Space</div>
+      <div class="links">
+        <span data-page="home" class="active" onclick="showPage('home')">我的世界</span>
+        <span data-page="mods" onclick="showPage('mods')">模组市场</span>
+        <span data-page="backup" onclick="showPage('backup')">备份</span>
+        <span data-page="settings" onclick="showPage('settings')">设置</span>
+      </div>
+      <div class="avatar"></div>
+    </nav>
+
+    <!-- ============ 主页 ============ -->
+    <div class="page show" id="page-home">
+      <div class="home-head">
+        <div>
+          <h1 id="greet">你好，服主</h1>
+          <p id="summary">正在加载你的世界…</p>
+        </div>
+        <div class="quick">
+          <button class="qbtn main" onclick="openCreate()">创建新世界</button>
+          <button class="qbtn ghost" onclick="loadAll()">刷新</button>
+        </div>
+      </div>
+
+      <div class="home-layout">
+        <div class="home-main">
+          <div class="worlds" id="worlds"></div>
+        </div>
+
+        <aside class="home-side">
+          <div class="perf-card" id="perfCard">
+            <canvas id="perfChart"></canvas>
+            <div class="perf-legend" id="perfLegend"></div>
+          </div>
+
+          <div class="activity">
+            <h3>实时动态</h3>
+            <div id="feeds"><div class="empty-hint">暂无动态</div></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- ============ 模组市场 ============ -->
+    <div class="page" id="page-mods">
+      <div class="hero">
+        <h1>模组市场</h1>
+        <p>检索 Modrinth 上的服务端插件、模组与整合包，一键安装到你的世界</p>
+      </div>
+      <div class="type-tabs" id="modTypeTabs">
+        <button class="type-tab active" data-type="plugin" onclick="setModType('plugin')">插件</button>
+        <button class="type-tab" data-type="mod" onclick="setModType('mod')">模组</button>
+        <button class="type-tab" data-type="modpack" onclick="setModType('modpack')">整合包</button>
+        <button class="type-tab" data-type="datapack" onclick="setModType('datapack')">数据包</button>
+        <button class="type-tab" style="margin-left:auto" onclick="$('packFile').click()">导入本地整合包</button>
+        <input type="file" id="packFile" accept=".mrpack,.mcpack,.zip" style="display:none" onchange="openPackUpload(this)">
+      </div>
+      <div class="mod-toolbar" style="margin-bottom:8px">
+        <select id="modTarget" onchange="targetChanged()" style="min-width:200px" title="选择目标世界后，自动按它的版本和加载器筛选">
+          <option value="">全部内容（不指定世界）</option>
+        </select>
+        <input type="search" id="modQ" placeholder="搜索名称、关键词…（回车搜索）"
+               onkeydown="if(event.key==='Enter')searchMods(true)" style="flex:1">
+        <button class="qbtn main sm" onclick="searchMods(true)">搜索</button>
+      </div>
+      <div class="mod-toolbar">
+        <select id="modVersion" onchange="searchMods(true)"><option value="">全部游戏版本</option></select>
+        <select id="modLoader" onchange="searchMods(true)">
+          <option value="">全部加载器</option>
+          <option value="paper">Paper</option>
+          <option value="spigot">Spigot</option>
+          <option value="bukkit">Bukkit</option>
+          <option value="fabric">Fabric</option>
+          <option value="forge">Forge</option>
+          <option value="neoforge">NeoForge</option>
+          <option value="folia">Folia</option>
+          <option value="velocity">Velocity</option>
+        </select>
+        <select id="modCategory" onchange="searchMods(true)">
+          <option value="">全部分类</option>
+          <option value="optimization">优化</option>
+          <option value="technology">科技</option>
+          <option value="magic">魔法</option>
+          <option value="adventure">冒险</option>
+          <option value="worldgen">世界生成</option>
+          <option value="utility">实用工具</option>
+          <option value="storage">存储</option>
+          <option value="food">食物</option>
+          <option value="mobs">生物</option>
+          <option value="equipment">装备</option>
+          <option value="decoration">装饰</option>
+          <option value="economy">经济</option>
+          <option value="transportation">交通</option>
+          <option value="game-mechanics">游戏机制</option>
+          <option value="management">服务器管理</option>
+          <option value="minigame">小游戏</option>
+          <option value="social">社交</option>
+          <option value="library">前置库</option>
+        </select>
+        <select id="modSort" onchange="searchMods(true)">
+          <option value="relevance">按相关度</option>
+          <option value="downloads">按下载量</option>
+          <option value="follows">按收藏数</option>
+          <option value="newest">最新发布</option>
+          <option value="updated">最近更新</option>
+        </select>
+      </div>
+      <div class="mod-list" id="modList"><div class="empty-hint">输入关键词或直接搜索热门内容</div></div>
+      <div class="load-more" id="modMore" style="display:none">
+        <button class="qbtn ghost" onclick="searchMods(false)">加载更多</button>
+      </div>
+    </div>
+
+    <!-- ============ 备份 ============ -->
+    <div class="page" id="page-backup">
+      <div class="hero">
+        <h1>备份中心</h1>
+        <p>本地备份、云盘同步、回收站，你的世界永不丢失</p>
+      </div>
+      <div class="bk-grid">
+        <div class="panel">
+          <h4>创建备份 <span class="hint">运行中的服务器也可以备份（自动落盘存档）</span></h4>
+          <div id="bkCreateRows"><div class="empty-hint">暂无世界</div></div>
+        </div>
+        <div class="panel">
+          <h4>本地备份 <span class="hint" id="bkCount"></span></h4>
+          <div id="bkList"><div class="empty-hint">暂无备份</div></div>
+        </div>
+        <div class="panel">
+          <h4>回收站 <span class="hint">删除的世界保留 7 天，可整个恢复</span></h4>
+          <div id="trashList"><div class="empty-hint">回收站是空的</div></div>
+        </div>
+        <div class="panel">
+          <h4>云盘（WebDAV：坚果云 / TeraCloud / 群晖 NAS 等）
+            <span class="hint">坚果云地址形如 https://dav.jianguoyun.com/dav/文件夹名/，密码用「应用密码」</span></h4>
+          <div class="dav-form">
+            <div class="full switch-row">
+              <input type="checkbox" id="davEnabled" style="width:auto">
+              <label for="davEnabled" style="margin:0">启用云盘备份</label>
+            </div>
+            <div class="full">
+              <label>WebDAV 地址</label>
+              <input id="davUrl" placeholder="https://dav.jianguoyun.com/dav/mcs-backups/">
+            </div>
+            <div>
+              <label>账号</label>
+              <input id="davUser" placeholder="邮箱 / 用户名">
+            </div>
+            <div>
+              <label>密码（应用密码）</label>
+              <input id="davPass" type="password" placeholder="不修改则留空">
+            </div>
+            <div class="full" style="display:flex; gap:10px">
+              <button class="qbtn main sm" onclick="saveDav()">保存配置</button>
+              <button class="qbtn ghost sm" onclick="testDav()">测试连接</button>
+              <button class="qbtn ghost sm" onclick="loadCloud()">刷新云端列表</button>
+            </div>
+          </div>
+          <div style="margin-top:18px">
+            <div class="section-title" style="margin-bottom:10px">云端文件</div>
+            <div id="cloudList"><div class="empty-hint">未启用或暂无云端备份</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 设置 ============ -->
+    <div class="page" id="page-settings">
+      <div class="hero">
+        <h1>面板设置</h1>
+        <p>安全、自动化、通知与 AI，一次配置长期省心</p>
+      </div>
+      <div class="set-grid">
+        <div class="panel">
+          <h4>安全与自启</h4>
+          <div class="set-row">
+            <div class="set-desc"><b>面板访问密码</b><span>开启后打开面板需要登录，换设备或给朋友看时更安全</span></div>
+            <input type="checkbox" id="authEnabled">
+          </div>
+          <div class="dav-form" style="margin-top:10px">
+            <div>
+              <input id="authUser" placeholder="管理员账号" maxlength="32">
+            </div>
+            <div>
+              <input id="authPw" type="password" placeholder="新密码（至少 6 位，不修改则留空）">
+            </div>
+            <div class="full" style="display:flex; gap:10px">
+              <button class="qbtn main sm" onclick="saveAuth()">保存密码设置</button>
+              <button class="qbtn ghost sm" onclick="doLogout()">退出登录</button>
+            </div>
+          </div>
+          <div class="set-row" style="margin-top:16px;border-top:1px solid rgba(255,255,255,.06);padding-top:16px">
+            <div class="set-desc"><b>开机自动运行面板</b><span>配合世界的「随面板自动启动」，断电重启后全自动恢复开服</span></div>
+            <input type="checkbox" id="bootEnabled" onchange="saveBootstart(this)">
+          </div>
+        </div>
+        <div class="panel">
+          <h4>每日定时重启</h4>
+          <div class="set-row">
+            <div class="set-desc"><b>启用定时重启</b><span>对所有运行中的世界生效，减少内存泄漏卡顿</span></div>
+            <input type="checkbox" id="rsEnabled">
+          </div>
+          <div class="dav-form" style="margin-top:10px">
+            <div>
+              <label>重启时间（24 小时制）</label>
+              <input id="rsTime" type="time" value="04:00">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;justify-content:flex-end">
+              <div class="switch-row"><input type="checkbox" id="rsWarn" checked><label for="rsWarn" style="margin:0">提前 60 秒游戏内公告</label></div>
+              <div class="switch-row"><input type="checkbox" id="rsBackup"><label for="rsBackup" style="margin:0">重启前自动备份</label></div>
+            </div>
+            <div class="full">
+              <button class="qbtn main sm" onclick="saveRestart()">保存定时重启配置</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <h4>自动备份</h4>
+          <div class="set-row">
+            <div class="set-desc"><b>启用自动备份</b><span>按间隔自动备份并清理旧份，可选自动上传云盘</span></div>
+            <input type="checkbox" id="abEnabled">
+          </div>
+          <div class="dav-form" style="margin-top:10px">
+            <div>
+              <label>备份间隔（分钟，最小 10）</label>
+              <input id="abInterval" type="number" value="60" min="10" step="10">
+            </div>
+            <div>
+              <label>每个世界保留份数</label>
+              <input id="abKeep" type="number" value="5" min="1" max="50">
+            </div>
+            <div class="switch-row"><input type="checkbox" id="abOnlyRunning" checked><label for="abOnlyRunning" style="margin:0">仅备份运行中的世界</label></div>
+            <div class="switch-row"><input type="checkbox" id="abCloud"><label for="abCloud" style="margin:0">备份完成后自动上传云盘</label></div>
+            <div class="full" id="abPerInst"></div>
+            <div class="full">
+              <button class="qbtn main sm" onclick="saveAutoBackup()">保存自动备份配置</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <h4>AI 助手</h4>
+          <div class="set-row">
+            <div class="set-desc"><b>启用 AI 助手</b><span>任意 OpenAI 兼容接口（DeepSeek / Kimi / 通义等），控制台一键分析报错并自动处理</span></div>
+            <input type="checkbox" id="aiEnabled">
+          </div>
+          <div class="dav-form" style="margin-top:10px">
+            <div class="full">
+              <label>接口地址（Base URL）</label>
+              <input id="aiBase" placeholder="https://api.deepseek.com/v1">
+            </div>
+            <div>
+              <label>API Key</label>
+              <input id="aiKey" type="password" placeholder="不修改则留空">
+            </div>
+            <div>
+              <label>模型</label>
+              <div style="display:flex; gap:8px">
+                <input id="aiModel" placeholder="deepseek-chat" list="aiModelList" style="flex:1">
+                <datalist id="aiModelList"></datalist>
+                <button class="qbtn ghost sm" style="white-space:nowrap" onclick="fetchAIModels(this)">获取列表</button>
+              </div>
+            </div>
+            <div class="full" style="display:flex; gap:10px">
+              <button class="qbtn main sm" onclick="saveAI()">保存配置</button>
+              <button class="qbtn ghost sm" onclick="testAI(this)">测试连接</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <h4>邮件通知</h4>
+          <div class="set-row">
+            <div class="set-desc"><b>启用邮件通知</b><span>开服完成、备份完成、崩溃告警等大事件发邮件提醒（QQ 邮箱填授权码）</span></div>
+            <input type="checkbox" id="mailEnabled">
+          </div>
+          <div class="dav-form" style="margin-top:10px">
+            <div>
+              <label>SMTP 服务器</label>
+              <input id="mailHost" placeholder="smtp.qq.com">
+            </div>
+            <div>
+              <label>端口</label>
+              <input id="mailPort" type="number" value="587">
+            </div>
+            <div>
+              <label>发件邮箱</label>
+              <input id="mailUser" placeholder="you@qq.com">
+            </div>
+            <div>
+              <label>授权码 / 密码</label>
+              <input id="mailAuth" type="password" placeholder="不修改则留空">
+            </div>
+            <div class="full">
+              <label>收件邮箱（留空发给自己）</label>
+              <input id="mailTo" placeholder="留空 = 发件邮箱">
+            </div>
+            <div class="full" style="display:flex; gap:10px">
+              <button class="qbtn main sm" onclick="saveMail()">保存配置</button>
+              <button class="qbtn ghost sm" onclick="testMail(this)">发送测试邮件</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 创建向导 -->
+  <div class="overlay" id="createOverlay">
+    <div class="modal">
+      <h2>创建新世界 · 30 秒开服</h2>
+      <label>世界名称</label>
+      <input id="cName" placeholder="例如：生存大陆" maxlength="30">
+      <label>服务端类型</label>
+      <select id="cType" onchange="createTypeHint()">
+        <option value="paper" selected>Paper（插件服，性能最好，纯生存/小游戏推荐）</option>
+        <option value="purpur">Purpur（Paper 加强版，更多可调项，兼容全部插件）</option>
+        <option value="fabric">Fabric（模组服，轻量模组/优化模组）</option>
+        <option value="forge">Forge（模组服，大型整合包生态）</option>
+        <option value="neoforge">NeoForge（模组服，Forge 的新分支，1.20.2+）</option>
+      </select>
+      <p id="cTypeHint" style="color:#6e6a8e;font-size:12px;margin:6px 0 0"></p>
+      <label>游戏版本</label>
+      <select id="cVersion" onchange="cLoaderReset()"><option>加载版本列表…</option></select>
+      <div id="cLoaderBox" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px;margin-top:12px">
+          <span style="font-size:13px;color:#9a96b8" id="cLoaderSummary">加载器版本：自动选择最新稳定版</span>
+          <span style="margin-left:auto"></span>
+          <button class="qbtn ghost sm" type="button" id="cLoaderToggle" onclick="cLoaderExpand(this)">手动选择</button>
+        </div>
+        <select id="cLoaderVer" style="display:none;margin-top:8px;width:100%"><option value="">自动（最新稳定/推荐）</option></select>
+      </div>
+      <label>端口</label>
+      <input id="cPort" type="number" value="25565" min="1024" max="65535">
+      <label>最大内存 (MB)</label>
+      <input id="cMem" type="number" value="2048" min="512" step="512">
+      <label>部署路径（可选）</label>
+      <input id="cDir" placeholder="留空默认放在面板 data 目录，例如 D:\MCServers\生存大陆">
+      <p style="color:#6e6a8e;font-size:12px;margin:6px 0 0">填绝对路径，需为空文件夹（不存在会自动创建）</p>
+      <div class="err" id="cErr"></div>
+      <div class="actions">
+        <button class="qbtn ghost sm" onclick="closeCreate();openImport()" style="margin-right:auto">导入已有服务器</button>
+        <button class="qbtn ghost sm" onclick="closeCreate();openGeneric()">其他游戏(SteamCMD)</button>
+        <button class="qbtn ghost" onclick="closeCreate()">取消</button>
+        <button class="qbtn main" id="cSubmit" onclick="submitCreate()">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 其他游戏 / 通用服务器 -->
+  <div class="overlay" id="genericOverlay">
+    <div class="modal">
+      <h2>其他游戏服务器</h2>
+      <p style="color:#9a96b8;font-size:13px">通过 SteamCMD 安装（饥荒、幻兽帕鲁、CS2 等），或直接托管任意可执行程序</p>
+      <label>服务器名称</label>
+      <input id="gName" maxlength="30" placeholder="例如：帕鲁服">
+      <label>创建方式</label>
+      <select id="gMode" onchange="$('gSteamRow').style.display=this.value==='steamcmd'?'':'none';$('gCmdRow').style.display=this.value==='custom'?'':'none'">
+        <option value="steamcmd">SteamCMD 自动安装（匿名登录支持的游戏）</option>
+        <option value="custom">自定义命令（已有服务端程序）</option>
+      </select>
+      <div id="gSteamRow">
+        <label>Steam 应用 ID（服务端 AppID）</label>
+        <input id="gAppId" type="number" placeholder="饥荒联机 343050 / 幻兽帕鲁 2394010 / CS2 730">
+        <p style="color:#6e6a8e;font-size:12px;margin:4px 0 0">在 steamdb.info 搜「游戏名 dedicated server」可查 AppID</p>
+      </div>
+      <div id="gCmdRow" style="display:none">
+        <label>启动命令（在实例目录下执行）</label>
+        <input id="gExec" placeholder="例如：PalServer.exe -port=8211">
+        <label>停止指令（可选，留空则直接结束进程）</label>
+        <input id="gStop" placeholder="部分服务器支持控制台指令，如 shutdown">
+      </div>
+      <label>端口（仅记录展示用）</label>
+      <input id="gPort" type="number" value="27015" min="1" max="65535">
+      <div class="err" id="gErr"></div>
+      <div class="actions">
+        <button class="qbtn ghost" onclick="$('genericOverlay').classList.remove('show')">取消</button>
+        <button class="qbtn main" id="gBtn" onclick="doGenericCreate()">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 导入已有服务器 -->
+  <div class="overlay" id="importOverlay">
+    <div class="modal">
+      <h2>导入已有服务器</h2>
+      <p style="color:#9a96b8;font-size:13px">把电脑上现成的服务端文件夹复制进面板托管，原文件夹不会被修改</p>
+      <label>世界名称</label>
+      <input id="impName" placeholder="例如：老服务器" maxlength="30">
+      <label>服务端文件夹完整路径</label>
+      <input id="impPath" placeholder="例如：D:\我的服务器">
+      <label>端口</label>
+      <input id="impPort" type="number" value="25565" min="1024" max="65535">
+      <label>最大内存 (MB)</label>
+      <input id="impMem" type="number" value="2048" min="512" step="512">
+      <div class="err" id="impErr"></div>
+      <div class="actions">
+        <button class="qbtn ghost" onclick="$('importOverlay').classList.remove('show')">取消</button>
+        <button class="qbtn main" id="impBtn" onclick="doImport()">导入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 实例详情页：控制台 / 文件 / 模组 / 统计 / 配置 -->
+  <div class="page" id="page-inst">
+    <div class="inst-head">
+      <span class="back" onclick="closeConsole()">← 返回</span>
+      <div>
+        <h2 id="consoleTitle">控制台</h2>
+        <div class="meta" id="instMeta"></div>
+      </div>
+      <span style="margin-left:auto"></span>
+      <button class="play-btn" id="consoleStartBtn" onclick="consoleAction()">启动</button>
+      <button class="play-btn off" id="consoleRestartBtn" style="display:none" onclick="restartSrv()" title="停止服务器后自动再启动">重启</button>
+      <button class="play-btn off" id="consoleSleepBtn" style="display:none" onclick="manualSleep()" title="关闭服务器释放内存，但端口保持监听：玩家在列表仍能看到本服，点击进入自动唤醒">待机</button>
+      <button class="play-btn off" onclick="openLogs()">日志</button>
+      <button class="play-btn off" onclick="cloneWorld(this)">克隆</button>
+      <button class="play-btn danger" id="consoleDelBtn" onclick="deleteWorld()">删除</button>
+    </div>
+    <div class="inst-layout">
+      <div class="inst-side">
+        <button class="active" data-ctab="console" onclick="setConsoleTab('console')">控制台</button>
+        <button data-ctab="players" onclick="setConsoleTab('players')">玩家</button>
+        <button data-ctab="files" onclick="setConsoleTab('files')">文件管理</button>
+        <button data-ctab="mods" onclick="setConsoleTab('mods')">模组 / 插件</button>
+        <button data-ctab="stats" onclick="setConsoleTab('stats')">统计 / 健康</button>
+        <button data-ctab="net" onclick="setConsoleTab('net')">联机 / 穿透</button>
+        <button data-ctab="props" onclick="setConsoleTab('props')">服务器配置</button>
+      </div>
+      <div class="inst-main">
+
+      <div id="ctab-console">
+        <div class="console-out" id="consoleOut"></div>
+        <div id="aiPanel" style="display:none;margin:8px 0;padding:12px 14px;border:1px solid rgba(122,162,255,.35);border-radius:12px;background:rgba(122,162,255,.06)">
+          <div id="aiSummary" style="font-size:13px;color:#c8c4e0;line-height:1.6"></div>
+          <div id="aiCauses" style="font-size:12px;color:#9a96b8;margin-top:6px;line-height:1.6"></div>
+          <div id="aiActions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"></div>
+          <div class="err" id="aiErr"></div>
+        </div>
+        <div class="quick-cmds" id="quickCmds">
+          <button style="border-color:rgba(122,162,255,.5);color:#7aa2ff" onclick="aiAnalyze(this)">AI 分析</button>
+          <button onclick="quickCmd('time set day')">白天</button>
+          <button onclick="quickCmd('time set night')">夜晚</button>
+          <button onclick="quickCmd('weather clear')">晴天</button>
+          <button onclick="quickCmd('save-all')">保存</button>
+          <button onclick="quickCmd('list')">在线</button>
+          <button onclick="quickCmd('tps', true)">TPS</button>
+          <button onclick="promptCmd('op ', '输入要给管理员的玩家名')">给OP</button>
+          <button onclick="promptCmd('whitelist add ', '输入要加白名单的玩家名')">白名单</button>
+        </div>
+        <div class="console-in">
+          <input id="consoleCmd" placeholder="输入指令，回车发送 · ↑↓ 翻历史"
+                 onkeydown="consoleKey(event)">
+          <button class="qbtn main" onclick="sendCmd()">发送</button>
+        </div>
+      </div>
+
+      <div id="ctab-players" style="display:none">
+        <div class="section-title" style="margin:0 0 8px">游戏内聊天（最近 200 条，5 秒刷新）</div>
+        <div id="chatBox" style="height:180px;overflow-y:auto;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:10px 14px;font-size:13px;line-height:1.7">
+          <div class="empty-hint">暂无聊天记录</div>
+        </div>
+        <div style="display:flex;gap:8px;margin:8px 0 16px">
+          <input id="chatSay" placeholder="以服主身份喊话（所有玩家可见）" style="flex:1"
+                 onkeydown="if(event.key==='Enter')sendSay()">
+          <button class="qbtn main sm" onclick="sendSay()">发送</button>
+        </div>
+        <div class="section-title" style="margin:0 0 8px">玩家管理</div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+          <input id="plName" placeholder="输入玩家名" maxlength="16" style="flex:1;min-width:160px"
+                 onkeydown="if(event.key==='Enter')playerAct('whitelist-add')">
+          <button class="qbtn main sm" onclick="playerAct('whitelist-add')">加白名单</button>
+          <button class="qbtn ghost sm" onclick="playerAct('op')">给 OP</button>
+          <button class="qbtn ghost sm" onclick="playerAct('ban')">封禁</button>
+          <button class="qbtn ghost sm" onclick="playerAct('kick')">踢出</button>
+        </div>
+        <div id="playersLists" class="pane-scroll" style="margin-top:14px"><div class="empty-hint">加载中…</div></div>
+        <div class="err" id="playersErr"></div>
+      </div>
+
+      <div id="ctab-files" style="display:none">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+          <span id="fileCrumb" style="font-size:13px;color:#9a96b8;word-break:break-all"></span>
+          <span style="margin-left:auto"></span>
+          <button class="qbtn ghost sm" onclick="loadFiles(fileCwd)">刷新</button>
+          <button class="qbtn ghost sm" onclick="mkdirHere()">新建文件夹</button>
+          <a class="qbtn ghost sm" id="zipDirBtn" href="#" style="text-decoration:none" title="把当前目录打包成 zip 下载">打包下载</a>
+          <button class="qbtn ghost sm" onclick="$('anyFile').click()">上传到此目录</button>
+          <input type="file" id="anyFile" style="display:none" onchange="uploadFile(this)">
+        </div>
+        <div id="fileList" class="pane-scroll"><div class="empty-hint">加载中…</div></div>
+        <div id="fileEditor" style="display:none">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+            <span id="editName" style="font-size:13px;color:#c8c4e0;word-break:break-all"></span>
+            <span style="margin-left:auto"></span>
+            <button class="qbtn ghost sm" onclick="closeEditor()">返回</button>
+            <button class="qbtn main sm" id="editSaveBtn" onclick="saveEditor()">保存</button>
+          </div>
+          <textarea id="editArea" spellcheck="false" style="width:100%;height:380px;resize:vertical;
+            background:#0a0918;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px;
+            font-family:Consolas,'Courier New',monospace;font-size:13px;line-height:1.5;color:#b8e6c8;outline:none"></textarea>
+        </div>
+        <div class="err" id="fileErr"></div>
+      </div>
+
+      <div id="ctab-mods" style="display:none">
+        <p style="color:#9a96b8;font-size:13px">禁用会把文件改名为 .disabled（重启生效），不删除文件</p>
+        <div id="installedList" class="pane-scroll" style="margin-top:10px"><div class="empty-hint">加载中…</div></div>
+        <div id="updatesList"></div>
+        <div class="err" id="installedErr"></div>
+        <div class="actions" style="margin-top:10px">
+          <button class="qbtn ghost sm" onclick="checkUpdates(this)">检查更新</button>
+          <button class="qbtn ghost sm" onclick="$('jarFile').click()">上传本地文件</button>
+          <input type="file" id="jarFile" accept=".jar,.zip" style="display:none" onchange="uploadInstalled(this)">
+          <button class="qbtn ghost sm" onclick="closeConsole();showPage('mods')">去模组市场安装</button>
+          <span id="exportBtns" style="display:none">
+            <a class="qbtn ghost sm" id="exportMrpack" href="#" style="text-decoration:none;color:#6affb0" title="Modrinth App / Prism / HMCL 可直接导入，朋友一键装好和服务器一致的模组">导出客户端包 (.mrpack)</a>
+            <a class="qbtn ghost sm" id="exportZip" href="#" style="text-decoration:none" title="普通压缩包，附使用说明，手动复制到 .minecraft">导出 zip</a>
+          </span>
+        </div>
+      </div>
+
+      <div id="ctab-stats" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span id="healthBadge" style="font-size:13px;font-weight:700"></span>
+          <span style="margin-left:auto"></span>
+          <button class="qbtn ghost sm" onclick="setConsoleTab('props');setTimeout(()=>$('optBox').scrollIntoView({behavior:'smooth'}),100)">去性能体检</button>
+        </div>
+        <canvas id="healthChart" height="110" style="width:100%;background:rgba(255,255,255,.03);border-radius:12px"></canvas>
+        <div id="lagList" style="font-size:12px;color:#9a96b8;margin:6px 0 12px"></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="font-size:13px;color:#9a96b8">在线人数曲线（每分钟采样，保留 7 天）</span>
+          <span style="margin-left:auto"></span>
+          <button class="qbtn ghost sm" id="statsRange24" onclick="renderStats(24)">近 24 小时</button>
+          <button class="qbtn ghost sm" id="statsRange168" onclick="renderStats(168)">近 7 天</button>
+        </div>
+        <canvas id="statsChart" height="140" style="width:100%;background:rgba(255,255,255,.03);border-radius:12px"></canvas>
+        <div class="section-title" style="margin:14px 0 6px">游玩时长排行</div>
+        <div id="statsRank" class="pane-scroll" style="font-size:13px"><div class="empty-hint">加载中…</div></div>
+      </div>
+
+      <div id="ctab-net" style="display:none">
+        <p style="color:#9a96b8;font-size:13px">联机方式与公网访问，按住址类型选择：同网直连 / UPnP / frp 穿透</p>
+        <div id="addrBox" style="margin:8px 0;padding:10px 14px;border:1px solid rgba(106,255,176,.25);border-radius:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:13px;color:#6affb0;font-weight:600">连接地址（发给朋友）</span>
+            <span style="margin-left:auto"></span>
+            <button class="qbtn ghost sm" onclick="loadAddresses()">刷新</button>
+          </div>
+          <div id="addrList" style="margin-top:8px;font-size:13px"><span style="color:#6e6a8e">加载中…</span></div>
+        </div>
+        <div style="margin:8px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:13px;color:#9a96b8">朋友连不上？一键排查端口、防火墙、配置等常见问题</span>
+            <span style="margin-left:auto"></span>
+            <button class="qbtn ghost sm" onclick="netDoctor(this)">联机诊断</button>
+          </div>
+          <div id="netDocList" style="display:none;margin-top:10px;font-size:13px"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px">
+          <span id="upnpInfo" style="font-size:13px;color:#9a96b8">公网联机：自动请求路由器开放端口，异地朋友直连</span>
+          <span style="margin-left:auto"></span>
+          <button class="qbtn ghost sm" id="upnpOnBtn" onclick="upnpMap(this)">开启映射</button>
+          <button class="qbtn ghost sm" id="upnpOffBtn" onclick="upnpUnmap(this)">关闭</button>
+        </div>
+        <div style="margin:8px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span id="frpInfo" style="font-size:13px;color:#9a96b8">内网穿透：路由器不支持 UPnP 时，借助 frp 服务器让朋友直连</span>
+            <span style="margin-left:auto"></span>
+            <button class="qbtn ghost sm" id="frpToggleBtn" onclick="frpToggle(this)">开启穿透</button>
+            <button class="qbtn ghost sm" onclick="frpToggleForm()">设置</button>
+          </div>
+          <div id="frpForm" style="display:none;margin-top:10px">
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <button class="qbtn ghost sm" id="frpModeCustom" onclick="frpSetMode('custom')">自定义 frps</button>
+              <button class="qbtn ghost sm" id="frpModeSakura" onclick="frpSetMode('sakura')">樱花frp / 其他客户端</button>
+            </div>
+            <div id="frpCustomBox">
+              <p style="color:#6e6a8e;font-size:12px;margin:4px 0">填你租用/自建的 frps 服务器信息，面板自动下载官方 frpc 并生成配置</p>
+              <label>frps 服务器地址</label><input id="frpAddr" placeholder="例如 frp.example.com">
+              <div style="display:flex;gap:10px">
+                <div style="flex:1"><label>frps 端口</label><input id="frpPort" type="number" value="7000"></div>
+                <div style="flex:1"><label>远程端口（朋友连接用）</label><input id="frpRemote" type="number" placeholder="例如 25565"></div>
+              </div>
+              <label>Token（没有则留空）</label><input id="frpToken" type="password" placeholder="不修改则留空">
+              <label>语音房远程端口（可选，让外网朋友也能进语音房）</label>
+              <input id="frpTalkPort" type="number" placeholder="留空不穿透，例如 28446">
+              <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+                <input type="checkbox" id="frpUdp" style="width:auto"><label for="frpUdp" style="margin:0">同时映射基岩版 UDP 19132</label>
+              </div>
+            </div>
+            <div id="frpSakuraBox" style="display:none">
+              <p style="color:#6e6a8e;font-size:12px;margin:4px 0">填访问密钥自动拉取你的隧道列表（官网 用户中心 → 访问密钥），无需手抄参数</p>
+              <label>访问密钥</label>
+              <div style="display:flex;gap:8px">
+                <input id="frpSakuraToken" type="password" placeholder="不修改则留空" style="flex:1">
+                <button class="qbtn ghost sm" onclick="sakuraLoadTunnels(this)">查询隧道</button>
+              </div>
+              <label>选择隧道</label>
+              <select id="frpSakuraTunnel"><option value="">先点「查询隧道」</option></select>
+              <label>樱花 frpc 客户端路径（官网下载页的 frpc 单文件）</label>
+              <input id="frpSakuraExe" placeholder="例如 D:\SakuraFrp\frpc.exe">
+              <p style="color:#6e6a8e;font-size:12px;margin:6px 0 0">高级：也可留空隧道改用手填启动参数</p>
+              <input id="frpSakuraArg" placeholder="手动参数（可选），如 -f 密钥:隧道ID">
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <input type="checkbox" id="frpAuto" style="width:auto"><label for="frpAuto" style="margin:0">服务器启动完成后自动开启穿透</label>
+            </div>
+            <div class="err" id="frpErr"></div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="qbtn main sm" onclick="frpSave()">保存穿透设置</button>
+              <button class="qbtn ghost sm" onclick="frpOpenToml()">编辑配置源码</button>
+            </div>
+            <div id="frpTomlBox" style="display:none;margin-top:10px">
+              <textarea id="frpTomlArea" style="width:100%;height:160px;font-family:monospace;font-size:12px" spellcheck="false"></textarea>
+              <div style="display:flex;gap:8px;margin-top:6px">
+                <button class="qbtn main sm" onclick="frpSaveToml()">保存源码（此后以源码为准）</button>
+                <button class="qbtn ghost sm" onclick="$('frpTomlBox').style.display='none'">收起</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="geyserBox" style="display:none;margin:8px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span id="geyserInfo" style="font-size:13px;color:#9a96b8"></span>
+            <span style="margin-left:auto"></span>
+            <button class="qbtn ghost sm" id="geyserBtn" style="display:none" onclick="installGeyser(this)">开启基岩互通</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0;padding:10px 14px;border:1px solid rgba(199,146,255,.28);border-radius:12px">
+          <span style="font-size:13px;color:#c792ff;font-weight:600">语音开黑</span>
+          <span id="talkCount" style="display:none;background:rgba(199,146,255,.15);color:#c792ff;font-size:11px;padding:2px 8px;border-radius:8px"></span>
+          <span style="font-size:13px;color:#9a96b8">边玩边聊：语音 + 屏幕共享 + 文字，无需注册，房间号就是本世界专属</span>
+          <span style="margin-left:auto"></span>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#9a96b8;cursor:pointer;margin:0">
+            <input type="checkbox" id="talkInviteCk" style="width:auto" onchange="talkInviteToggle(this)">玩家进服自动发送房间地址</label>
+          <button class="qbtn ghost sm" id="talkPwBtn" onclick="talkPwToggle()">设置密码</button>
+          <button class="qbtn ghost sm" onclick="talkCopyLink()">复制房间链接</button>
+          <button class="qbtn main sm" onclick="talkOpen()">进入语音房</button>
+        </div>
+        <div id="spBox" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px">
+          <span id="spInfo" style="font-size:13px;color:#9a96b8">公开状态页：一个免密码的分享页面，朋友随时看服务器在不在线</span>
+          <span style="margin-left:auto"></span>
+          <button class="qbtn ghost sm" id="spCopyBtn" style="display:none" onclick="spCopy()">复制链接</button>
+          <button class="qbtn ghost sm" id="spToggleBtn" onclick="spToggle(this)">开启</button>
+        </div>
+      </div>
+
+      <div id="ctab-props" style="display:none">
+        <p style="color:#9a96b8;font-size:13px">修改 server.properties，保存后需重启服务器生效</p>
+        <div style="display:flex;align-items:center;gap:12px;margin:8px 0">
+          <img id="iconPreview" width="48" height="48" style="border-radius:10px;background:rgba(255,255,255,.06);image-rendering:pixelated" alt="">
+          <div style="font-size:12px;color:#9a96b8">服务器图标（游戏列表里显示，自动缩放 64×64）</div>
+          <button class="qbtn ghost sm" style="margin-left:auto" onclick="$('iconFile').click()">上传图标</button>
+          <input type="file" id="iconFile" accept="image/*" style="display:none" onchange="uploadIcon(this)">
+        </div>
+        <div id="optBox" style="margin:8px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:13px;color:#9a96b8">服务器卡顿？一键体检并应用社区推荐的优化配置</span>
+            <span style="margin-left:auto"></span>
+            <button class="qbtn ghost sm" onclick="optCheck(this)">性能体检</button>
+          </div>
+          <div id="optList" style="display:none;margin-top:10px;font-size:13px"></div>
+          <div id="optApplyRow" style="display:none;margin-top:10px;text-align:right">
+            <button class="qbtn main sm" onclick="optApply(this)">一键应用全部建议</button>
+          </div>
+          <div class="err" id="optErr"></div>
+        </div>
+        <div id="worldBox" style="margin:8px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:13px;color:#9a96b8">世界管理：查看维度大小、重置、导入单机存档</span>
+            <span style="margin-left:auto"></span>
+            <button class="qbtn ghost sm" onclick="$('worldZip').click()">导入单机存档</button>
+            <input type="file" id="worldZip" accept=".zip" style="display:none" onchange="uploadWorld(this)">
+            <button class="qbtn ghost sm" onclick="loadWorld()">查看维度</button>
+          </div>
+          <div id="worldDims" style="display:none;margin-top:10px;font-size:13px"></div>
+          <div id="worldResetBox" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.06)">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select id="worldTarget" style="width:auto">
+                <option value="nether">重置地狱（版本更新后刷新资源）</option>
+                <option value="end">重置末地（重新打龙/刷鞘翅）</option>
+                <option value="all">重置整个世界（开新档）</option>
+              </select>
+              <input id="worldSeed" placeholder="新种子（留空随机，仅整世界重置生效）" style="flex:1;min-width:180px">
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <input type="checkbox" id="worldBackup" style="width:auto" checked>
+              <label for="worldBackup" style="margin:0;font-size:13px">重置前自动备份（强烈建议）</label>
+              <span style="margin-left:auto"></span>
+              <button class="qbtn ghost sm" style="color:#ff5c8a" onclick="worldReset(this)">执行重置</button>
+            </div>
+            <div class="err" id="worldErr"></div>
+          </div>
+        </div>
+        <div id="coreUpdateBox" style="display:none;margin:8px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span id="coreUpdateInfo" style="font-size:13px;color:#9a96b8">检查核心更新中…</span>
+            <span style="margin-left:auto"></span>
+            <button class="qbtn ghost sm" id="coreUpdateBtn" style="display:none" onclick="doCoreUpdate(this)">更新核心</button>
+          </div>
+          <div id="upgradeRow" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.06)">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-size:13px;color:#9a96b8">跨版本升级（升级后世界自动升格，不可降回）</span>
+              <span style="margin-left:auto"></span>
+              <select id="upgradeSel" style="width:auto"><option value="">选择新版本</option></select>
+              <button class="qbtn ghost sm" onclick="doUpgrade(this)">升级</button>
+            </div>
+          </div>
+        </div>
+        <div id="javaBox" style="margin:8px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.09);border-radius:12px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:13px;color:#9a96b8">Java 运行环境</span>
+            <span id="javaInfo" style="font-size:12px;color:#6e6a8e">加载中…</span>
+            <span style="margin-left:auto"></span>
+            <button class="qbtn ghost sm" onclick="toggleJavaEdit()">自定义路径</button>
+          </div>
+          <div id="javaEditRow" style="display:none;margin-top:10px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input id="javaPathInput" placeholder="java.exe 完整路径，例如 C:\Program Files\Java\jdk-21\bin\java.exe" style="flex:1;min-width:240px">
+              <button class="qbtn main sm" onclick="saveJavaPath(this)">保存</button>
+              <button class="qbtn ghost sm" onclick="clearJavaPath(this)">恢复自动匹配</button>
+            </div>
+            <div style="font-size:12px;color:#6e6a8e;margin-top:6px">留给面板自动匹配即可满足绝大多数情况；只有想用自装 JDK / GraalVM 时才需要自定义</div>
+            <div class="err" id="javaErr"></div>
+          </div>
+        </div>
+        <div id="propsForm" class="pane-scroll" style="margin-top:8px"><div class="empty-hint">加载中…</div></div>
+        <div class="section-title" style="margin:14px 0 6px">定时指令（服务器运行时自动执行）</div>
+        <div id="tcList" style="font-size:13px"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <input id="tcInterval" type="number" min="1" value="30" style="width:90px" title="间隔（分钟）">
+          <input id="tcCmd" placeholder="指令，如 say 记得休息哦 / save-all" style="flex:1;min-width:180px">
+          <button class="qbtn ghost sm" onclick="addTimedCmd()">添加</button>
+        </div>
+        <div class="err" id="propsErr"></div>
+        <div class="actions" style="margin-top:10px">
+          <button class="qbtn main" id="propsBtn" onclick="saveProps()">保存配置</button>
+        </div>
+      </div>
+      </div><!-- /inst-main -->
+    </div><!-- /inst-layout -->
+  </div><!-- /page-inst -->
+
+  <!-- 模组版本选择 / 安装 -->
+  <div class="overlay" id="modVerOverlay">
+    <div class="modal">
+      <h2 id="modVerTitle">选择版本安装</h2>
+      <label>安装到世界</label>
+      <select id="modVerInst"></select>
+      <div id="modVerList" style="margin-top:16px"><div class="empty-hint">加载中…</div></div>
+      <div class="err" id="modVerErr"></div>
+      <div class="actions">
+        <button class="qbtn ghost" onclick="$('modVerOverlay').classList.remove('show')">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 备份浏览 / 局部恢复 -->
+  <div class="overlay" id="browseOverlay">
+    <div class="modal" style="max-width:640px">
+      <h2>浏览备份</h2>
+      <p style="color:#9a96b8;font-size:13px" id="browseFile"></p>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <span id="browseCrumb" style="font-size:13px;color:#9a96b8;word-break:break-all"></span>
+        <span style="margin-left:auto"></span>
+        <label style="margin:0;font-size:12px">恢复到</label>
+        <select id="browseInst" style="width:auto"></select>
+      </div>
+      <div id="browseList" class="pane-scroll" style="max-height:340px"><div class="empty-hint">加载中…</div></div>
+      <div class="err" id="browseErr"></div>
+      <div class="actions">
+        <button class="qbtn ghost" onclick="$('browseOverlay').classList.remove('show')">关闭</button>
+        <button class="qbtn main" id="browseRestoreBtn" onclick="browseRestore(this)" disabled>恢复选中项</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 恢复备份 -->
+  <div class="overlay" id="restoreOverlay">
+    <div class="modal">
+      <h2>恢复备份</h2>
+      <p style="color:#9a96b8;font-size:14px" id="restoreFile"></p>
+      <label>恢复到世界（会覆盖现有文件，请先停止服务器）</label>
+      <select id="restoreInst"></select>
+      <div class="err" id="restoreErr"></div>
+      <div class="actions">
+        <button class="qbtn ghost" onclick="$('restoreOverlay').classList.remove('show')">取消</button>
+        <button class="qbtn main" id="restoreBtn" onclick="doRestore()">恢复</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 登录 -->
+  <div class="overlay" id="loginOverlay" style="z-index:60">
+    <div class="modal" style="width:min(380px,92vw)">
+      <svg class="modal-logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polygon points="32,6 56,19 32,32 8,19" fill="url(#lgTop)"/>
+        <polygon points="8,19 32,32 32,58 8,45" fill="url(#lgLeft)"/>
+        <polygon points="56,19 32,32 32,58 56,45" fill="url(#lgRight)"/>
+      </svg>
+      <h2>MCS 面板登录</h2>
+      <label>账号</label>
+      <input id="loginUser" placeholder="管理员账号" maxlength="32"
+             onkeydown="if(event.key==='Enter')$('loginPw').focus()">
+      <label>密码</label>
+      <input id="loginPw" type="password" placeholder="输入面板密码"
+             onkeydown="if(event.key==='Enter')doLogin()">
+      <div class="err" id="loginErr"></div>
+      <div class="actions">
+        <button class="qbtn main" id="loginBtn" onclick="doLogin()">登录</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 首次启动：管理员账号初始化 -->
+  <div class="overlay" id="setupOverlay" style="z-index:61">
+    <div class="modal" style="width:min(420px,92vw)">
+      <svg class="modal-logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polygon points="32,6 56,19 32,32 8,19" fill="url(#lgTop)"/>
+        <polygon points="8,19 32,32 32,58 8,45" fill="url(#lgLeft)"/>
+        <polygon points="56,19 32,32 32,58 56,45" fill="url(#lgRight)"/>
+      </svg>
+      <h2>欢迎使用 MCS 面板</h2>
+      <p style="color:#9a96b8;font-size:13px;line-height:1.6">首次启动，先设置管理员账号。开启后打开面板需要登录，适合面板可能被局域网/公网访问的情况。</p>
+      <label>管理员账号</label>
+      <input id="setupUser" placeholder="例如：admin" maxlength="32">
+      <label>密码（至少 6 位）</label>
+      <input id="setupPw" type="password" placeholder="设置登录密码">
+      <label>确认密码</label>
+      <input id="setupPw2" type="password" placeholder="再输入一次"
+             onkeydown="if(event.key==='Enter')doSetup(false)">
+      <div class="err" id="setupErr"></div>
+      <div class="actions">
+        <button class="qbtn ghost" onclick="doSetup(true)">本机自用，跳过</button>
+        <button class="qbtn main" id="setupBtn" onclick="doSetup(false)">创建管理员</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 日志查看 -->
+  <div class="overlay" id="logsOverlay">
+    <div class="modal console-modal">
+      <div class="console-head">
+        <h2 id="logsTitle">历史日志</h2>
+        <select id="logsSel" onchange="loadLogFile()" style="max-width:220px"></select>
+        <input id="logsQ" placeholder="搜索全部日志（玩家名/报错/关键词）" style="max-width:240px"
+               onkeydown="if(event.key==='Enter')searchLogs()">
+        <button class="qbtn ghost sm" onclick="searchLogs()">搜索</button>
+        <button class="close" onclick="$('logsOverlay').classList.remove('show')">×</button>
+      </div>
+      <div class="console-out" id="logsOut">选择日志文件</div>
+    </div>
+  </div>
+
+  <!-- 整合包安装 -->
+  <div class="overlay" id="packOverlay">
+    <div class="modal">
+      <h2>安装整合包为新世界</h2>
+      <p style="color:#9a96b8;font-size:14px" id="packInfo"></p>
+      <label>世界名称</label>
+      <input id="packName" maxlength="30">
+      <label>端口</label>
+      <input id="packPort" type="number" value="25565" min="1024" max="65535">
+      <label>最大内存 (MB)（整合包建议 4096 以上）</label>
+      <input id="packMem" type="number" value="4096" min="1024" step="512">
+      <div class="err" id="packErr"></div>
+      <div class="actions">
+        <button class="qbtn ghost" onclick="$('packOverlay').classList.remove('show')">取消</button>
+        <button class="qbtn main" id="packBtn" onclick="doPackInstall()">开始安装</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let instances = [];
+let currentId = null;
+let ws = null;
+
+const banners = ['b1','b2','b3'];
+const typeLabel = t => ({ paper:'Paper', purpur:'Purpur', fabric:'Fabric', forge:'Forge', neoforge:'NeoForge', modpack:'整合包', generic:'通用' }[t] || t || 'Paper');
+const statusMap = {
+  running:     { pill: 'pill-on',  text: '运行中' },
+  starting:    { pill: 'pill-busy', text: '启动中' },
+  stopping:    { pill: 'pill-busy', text: '停止中' },
+  downloading: { pill: 'pill-busy', text: '下载核心中' },
+  sleeping:    { pill: 'pill-busy', text: '待机中 · 进服自动唤醒' },
+  stopped:     { pill: 'pill-off', text: '已关机' },
+  error:       { pill: 'pill-err', text: '出错了' },
+};
+
+function copyAddr(addr) {
+  (navigator.clipboard ? navigator.clipboard.writeText(addr) : Promise.reject())
+    .then(() => toast('已复制联机地址：' + addr))
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = addr; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove();
+      toast('已复制联机地址：' + addr);
+    });
+}
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+async function api(path, opts) {
+  const r = await fetch('/api' + path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (r.status === 401 && path !== '/auth/status' && path !== '/auth/login') {
+    $('loginOverlay').classList.add('show');
+    throw new Error('需要登录');
+  }
+  if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+}
+
+function timeAgo(iso) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return '刚刚';
+  if (s < 3600) return Math.floor(s/60) + ' 分钟前';
+  if (s < 86400) return Math.floor(s/3600) + ' 小时前';
+  return Math.floor(s/86400) + ' 天前';
+}
+
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+  if (n < 1073741824) return (n/1048576).toFixed(1) + ' MB';
+  return (n/1073741824).toFixed(2) + ' GB';
+}
+
+function fmtNum(n) {
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return String(n);
+}
+
+function fmtDur(sec) {
+  const d = Math.floor(sec/86400), h = Math.floor(sec%86400/3600), m = Math.floor(sec%3600/60);
+  if (d > 0) return d + ' 天 ' + h + ' 小时';
+  if (h > 0) return h + ' 小时 ' + m + ' 分';
+  return m + ' 分钟';
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+/* ===== 页面切换 ===== */
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
+  document.querySelectorAll('nav .links span').forEach(s =>
+    s.classList.toggle('active', s.dataset.page === name));
+  $('page-' + name).classList.add('show');
+  history.replaceState(null, '', '#' + name);
+  if (name === 'mods' && !window._modsInit) { window._modsInit = 1; initMods(); }
+  if (name === 'backup') loadBackupPage();
+  if (name === 'settings') loadSettingsPage();
+}
+
+/* ===== 系统状态：Ubuntu 系统监视器风格折线图 ===== */
+const PERF_MAX = 120;                   // 保留 120 个采样点（1s 一采 ≈ 2 分钟）
+const perfHist = { cpu: [], mem: [], disk: [] };
+const perfSeries = [
+  { key: 'cpu',  label: 'CPU',  color: '#ff7a45' },
+  { key: 'mem',  label: '内存', color: '#3fa7ff' },
+  { key: 'disk', label: '磁盘', color: '#6affb0' },
+];
+const instPerf = {}; // id -> {name, color, data[]} 每个运行实例的 CPU 线
+const instPalette = ['#c792ff', '#ffd75c', '#5cffe4', '#ff8ab0', '#9dff5c', '#5c9dff'];
+function instColor(id) {
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return instPalette[h % instPalette.length];
+}
+
+function drawPerfChart() {
+  const cv = $('perfChart');
+  if (!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (!W || !H) return;
+  if (cv.width !== W * dpr || cv.height !== H * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  // 网格：横线 0/25/50/75/100，竖线均分
+  ctx.strokeStyle = 'rgba(255,255,255,.07)';
+  ctx.lineWidth = 1;
+  ctx.font = '10px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  for (let i = 0; i <= 4; i++) {
+    const y = H - 12 - (H - 22) * i / 4;
+    ctx.beginPath(); ctx.moveTo(26, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillText(i * 25 + '%', 0, y + 3);
+  }
+  for (let i = 1; i < 6; i++) {
+    const x = 26 + (W - 26) * i / 6;
+    ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, H - 12); ctx.stroke();
+  }
+
+  const plotX = 26, plotW = W - 26, plotTop = 10, plotH = H - 22;
+  // 从最左往右绘制：第 i 个点固定在 i/(PERF_MAX-1) 处，未填满时右侧留白
+  const toXY = (idx, val) => [
+    plotX + plotW * idx / (PERF_MAX - 1),
+    plotTop + plotH * (1 - Math.min(100, val) / 100),
+  ];
+
+  perfSeries.forEach(s => {
+    const data = perfHist[s.key];
+    if (data.length < 2) return;
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const [x, y] = toXY(i, v);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 1.8;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    // 曲线下方填充淡色
+    const [lx] = toXY(data.length - 1, data[data.length - 1]);
+    ctx.lineTo(lx, plotTop + plotH);
+    ctx.lineTo(plotX, plotTop + plotH);
+    ctx.closePath();
+    ctx.fillStyle = s.color + '18';
+    ctx.fill();
+  });
+
+  // 每个运行实例的 CPU 虚线
+  for (const id in instPerf) {
+    const s = instPerf[id];
+    if (s.data.length < 2) continue;
+    ctx.beginPath();
+    let started = false;
+    s.data.forEach((v, i) => {
+      if (v == null) { started = false; return; }
+      const [x, y] = toXY(i, v);
+      started ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      started = true;
+    });
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+async function loadStats() {
+  try {
+    const s = await api('/stats');
+    window._lanIP = s.lanIP || '';
+    perfHist.cpu.push(s.cpuPercent);
+    perfHist.mem.push(s.memPercent);
+    perfHist.disk.push(s.diskPercent);
+    for (const k in perfHist) if (perfHist[k].length > PERF_MAX) perfHist[k].shift();
+    // 每个运行中实例的 CPU 线（颜色按 id 稳定分配）
+    const seen = new Set();
+    (s.instStats || []).forEach(t => {
+      seen.add(t.id);
+      if (!instPerf[t.id]) instPerf[t.id] = { name: t.name, color: instColor(t.id), data: [] };
+      instPerf[t.id].name = t.name;
+      // 补齐长度使横轴对齐
+      while (instPerf[t.id].data.length < perfHist.cpu.length - 1) instPerf[t.id].data.push(null);
+      instPerf[t.id].data.push(t.cpu);
+      if (instPerf[t.id].data.length > PERF_MAX) instPerf[t.id].data.shift();
+    });
+    // 已停止的实例线渐出（数据推 null，全 null 后移除）
+    for (const id in instPerf) {
+      if (!seen.has(id)) {
+        instPerf[id].data.push(null);
+        if (instPerf[id].data.length > PERF_MAX) instPerf[id].data.shift();
+        if (instPerf[id].data.every(v => v == null)) delete instPerf[id];
+      }
+    }
+    drawPerfChart();
+
+    const subs = {
+      cpu: `${s.numCPU} 核心`,
+      mem: `${fmtBytes(s.memUsed)} / ${fmtBytes(s.memTotal)}`,
+      disk: `剩余 ${fmtBytes(s.diskTotal - s.diskUsed)}`,
+    };
+    const vals = { cpu: s.cpuPercent, mem: s.memPercent, disk: s.diskPercent };
+    const instLegend = (s.instStats || []).map(t => `
+      <div class="perf-item" style="min-width:130px">
+        <span class="dot" style="background:${instColor(t.id)};border-radius:50%"></span>
+        <div>
+          <div class="lk">${esc(t.name)} <span class="lv" style="color:${instColor(t.id)}">${t.cpu.toFixed(0)}%</span></div>
+          <div class="lsub">${t.mem} MB</div>
+        </div>
+      </div>`).join('');
+    $('perfLegend').innerHTML = perfSeries.map(p => `
+      <div class="perf-item">
+        <span class="dot" style="background:${p.color}"></span>
+        <div>
+          <div class="lk">${p.label} <span class="lv" style="color:${p.color}">${vals[p.key].toFixed(0)}%</span></div>
+          <div class="lsub">${subs[p.key]}</div>
+        </div>
+      </div>`).join('') + instLegend + `
+      <div class="perf-side">
+        <div class="perf-item"><div>
+          <div class="lk">服务器 <span class="lv">${s.running} / ${s.instances}</span></div>
+          <div class="lsub">运行中 · 已分配 ${s.allocatedMB} MB</div>
+        </div></div>
+        <div class="perf-item"><div>
+          <div class="lk">面板运行 <span class="lv">${fmtDur(s.panelUptime)}</span></div>
+          <div class="lsub">系统开机 ${fmtDur(s.hostUptime)}</div>
+        </div></div>
+      </div>`;
+  } catch (e) { /* stats are non-critical */ }
+}
+window.addEventListener('resize', drawPerfChart);
+
+/* ===== 主页渲染 ===== */
+function render() {
+  const running = instances.filter(i => i.status === 'running').length;
+  const players = instances.reduce((a, i) => a + (i.players||0), 0);
+  const h = new Date().getHours();
+  $('greet').textContent = (h < 6 ? '夜深了' : h < 12 ? '早上好' : h < 18 ? '下午好' : '晚上好') + '，服主';
+  $('summary').textContent = instances.length === 0
+    ? '还没有世界，点击下方创建第一个吧'
+    : `你有 ${instances.length} 个世界 · ${running} 个运行中 · 当前 ${players} 位玩家在线`;
+
+  const w = $('worlds');
+  w.innerHTML = '';
+  instances.forEach((it, idx) => {
+    const st = statusMap[it.status] || statusMap.stopped;
+    const div = document.createElement('div');
+    div.className = 'world';
+    const isRunning = it.status === 'running' || it.status === 'starting';
+    const busy = it.status === 'downloading' || it.status === 'stopping';
+    div.innerHTML = `
+      <div class="banner ${banners[idx % 3]}" onclick="openConsole('${it.id}')">
+        <span class="status-pill ${st.pill}">${st.text}</span>
+        <span class="wname"></span>
+      </div>
+      <div class="body">
+        <div class="tags">
+          <span class="tag">${typeLabel(it.type)} ${esc(it.version || '')}</span>
+          <span class="tag">端口 ${it.port}</span>
+          <span class="tag">${it.memoryMB} MB</span>
+          ${it.status === 'running' && it.tps ? `<span class="tag" style="color:${it.tps >= 19 ? '#6affb0' : it.tps >= 15 ? '#ffb86a' : '#ff6a6a'}" title="每秒游戏刻，20 为满速">TPS ${Math.min(it.tps, 20).toFixed(1)}</span>` : ''}
+          ${it.status === 'running' && it.memUsedMB ? `<span class="tag" style="color:#3fa7ff">内存 ${it.memUsedMB} MB</span><span class="tag" style="color:#ff9a5c">CPU ${(it.cpuPct||0).toFixed(1)}%</span>` : ''}
+          ${it.status === 'running' && window._lanIP ? `<span class="tag" style="color:#6affb0;cursor:pointer" title="点击复制联机地址" onclick="event.stopPropagation();copyAddr('${window._lanIP}:${it.port}')">复制地址 ${window._lanIP}:${it.port}</span>` : ''}
+          ${(window._talkRooms || {})[it.id.slice(0, 8).toUpperCase()] ? `<span class="tag" style="color:#c792ff;cursor:pointer" title="点击进入语音房" onclick="event.stopPropagation();window.open('/talk/#/room/${it.id.slice(0, 8).toUpperCase()}', '_blank')">语音房 ${window._talkRooms[it.id.slice(0, 8).toUpperCase()]} 人</span>` : ''}
+        </div>
+        <div class="row">
+          <div class="players"><span class="cnt"></span></div>
+          <div class="btns">
+            <button class="play-btn ${isRunning ? '' : 'off'}" ${busy ? 'disabled' : ''}
+              onclick="toggle('${it.id}')">${isRunning ? '停止' : '启动'}</button>
+            <button class="play-btn off" onclick="openConsole('${it.id}')">控制台</button>
+            <button class="play-btn off" onclick="openProps('${it.id}')">设置</button>
+            <button class="play-btn off" onclick="openPlayers('${it.id}')">玩家</button>
+            <button class="play-btn off" onclick="openInstalled('${it.id}')">模组</button>
+          </div>
+        </div>
+      </div>`;
+    div.querySelector('.wname').textContent = it.name;
+    div.querySelector('.cnt').textContent =
+      it.status === 'running' ? it.players + ' 人在线' + (it.uptimeSec ? ' · 已运行 ' + fmtDur(it.uptimeSec) : '') :
+      it.status === 'downloading' ? (it.dlLabel ? '' : '正在下载/安装…') :
+      it.status === 'error' ? (it.error || '出错了，点击查看日志') :
+      '上次活跃：' + timeAgo(it.lastActive || it.createdAt);
+    if (it.status === 'error' && it.needJava) {
+      const fj = document.createElement('div');
+      fj.className = 'dl-prog';
+      fj.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:12px;color:#ffb86a">启动失败：需要 Java ${it.needJava}</span>
+          <span style="margin-left:auto"></span>
+          <button class="qbtn main sm" onclick="event.stopPropagation();fixJava('${it.id}', ${it.needJava}, this)">自动安装 Java ${it.needJava} 并重启</button>
+        </div>`;
+      div.querySelector('.body').appendChild(fj);
+    }
+    if ((it.status === 'downloading' || it.status === 'starting') && it.dlLabel) {
+      const dp = document.createElement('div');
+      dp.className = 'dl-prog';
+      const pct = it.dlTotal > 0 ? Math.min(100, Math.round(it.dlDone * 100 / it.dlTotal)) : 0;
+      const isBytes = it.dlTotal > 10000; // 字节计数才显示 MB，文件计数显示 n/n
+      const right = it.dlTotal > 0
+        ? (isBytes ? `${(it.dlDone/1e6).toFixed(1)} / ${(it.dlTotal/1e6).toFixed(1)} MB · ${pct}%` : `${pct}%`)
+        : '';
+      dp.innerHTML = `
+        <div class="dl-label"><span></span><span>${right}</span></div>
+        <div class="dl-bar"><div class="dl-fill ${it.dlTotal > 0 ? '' : 'indet'}" style="width:${pct}%"></div></div>`;
+      dp.querySelector('.dl-label span').textContent = it.dlLabel;
+      div.querySelector('.body').appendChild(dp);
+    }
+    if (it.status === 'running' && (it.playerList||[]).length) {
+      const pl = document.createElement('div');
+      pl.className = 'tags';
+      pl.style.marginTop = '10px';
+      pl.innerHTML = it.playerList.slice(0, 12).map(p => `<span class="tag" style="color:#6affb0">${esc(p)}</span>`).join('')
+        + (it.playerList.length > 12 ? `<span class="tag">+${it.playerList.length - 12}</span>` : '');
+      div.querySelector('.body').appendChild(pl);
+    }
+    w.appendChild(div);
+  });
+
+  const add = document.createElement('div');
+  add.className = 'world new';
+  add.onclick = openCreate;
+  add.innerHTML = '<div><div class="plus">+</div><div class="txt">创建新世界 · 30 秒开服</div></div>';
+  w.appendChild(add);
+}
+
+async function loadAll() {
+  try {
+    instances = await api('/instances');
+    instances.sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
+    api('/talk/rooms').then(r => { window._talkRooms = r; }).catch(() => {});
+    render();
+    updateConsoleBtn();
+    const acts = await api('/activity');
+    const f = $('feeds');
+    if (!acts.length) { f.innerHTML = '<div class="empty-hint">暂无动态。启动服务器、玩家进出、备份等真实事件会显示在这里。</div>'; return; }
+    f.innerHTML = acts.slice(0, 10).map(a => `
+      <div class="feed">
+        <div class="dot ${a.icon}"></div>
+        <div>${a.text}</div>
+        <div class="when">${timeAgo(a.time)}</div>
+      </div>`).join('');
+  } catch (e) {
+    $('summary').textContent = '连接后端失败: ' + e.message;
+  }
+}
+
+async function toggle(id) {
+  const it = instances.find(i => i.id === id);
+  if (!it) return;
+  const isRunning = it.status === 'running' || it.status === 'starting';
+  try {
+    await api(`/instances/${id}/${isRunning ? 'stop' : 'start'}`, { method: 'POST' });
+    if (!isRunning && currentId !== id) openConsole(id);
+    loadAll();
+  } catch (e) { toast(e.message); }
+}
+
+/* ===== 创建向导 ===== */
+async function openCreate() {
+  $('cErr').textContent = '';
+  $('createOverlay').classList.add('show');
+  const sel = $('cVersion');
+  if (!sel.dataset.loaded) {
+    try {
+      const vs = await api('/versions');
+      sel.innerHTML = vs.filter(v => /^\d+\.\d+(\.\d+)?$/.test(v))
+        .map(v => `<option>${v}</option>`).join('');
+      sel.dataset.loaded = '1';
+    } catch (e) {
+      sel.innerHTML = '<option value="">版本列表加载失败</option>';
+      $('cErr').textContent = e.message;
+    }
+  }
+  const used = new Set(instances.map(i => i.port));
+  let p = 25565;
+  while (used.has(p)) p++;
+  $('cPort').value = p;
+}
+function closeCreate() { $('createOverlay').classList.remove('show'); }
+
+/* ===== 其他游戏 / 通用服务器 ===== */
+function openGeneric() {
+  $('gErr').textContent = '';
+  $('genericOverlay').classList.add('show');
+}
+
+async function doGenericCreate() {
+  const name = $('gName').value.trim();
+  const mode = $('gMode').value;
+  if (!name) { $('gErr').textContent = '请填写名称'; return; }
+  $('gBtn').disabled = true;
+  try {
+    const it = await api('/instances/generic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name, mode,
+        steamAppId: +$('gAppId').value || 0,
+        execCmd: $('gExec').value.trim(),
+        stopCmd: $('gStop').value.trim(),
+        port: +$('gPort').value || 27015,
+      }),
+    });
+    $('genericOverlay').classList.remove('show');
+    toast(mode === 'steamcmd' ? 'SteamCMD 安装中，进度见控制台' : '已创建');
+    await loadAll();
+    openConsole(it.id);
+  } catch (e) { $('gErr').textContent = e.message; }
+  finally { $('gBtn').disabled = false; }
+}
+
+/* ===== 导入已有服务器 ===== */
+function openImport() {
+  $('impErr').textContent = '';
+  const used = new Set(instances.map(i => i.port));
+  let p = 25565;
+  while (used.has(p)) p++;
+  $('impPort').value = p;
+  $('importOverlay').classList.add('show');
+}
+
+async function doImport() {
+  const name = $('impName').value.trim(), path = $('impPath').value.trim();
+  if (!name || !path) { $('impErr').textContent = '请填写名称和文件夹路径'; return; }
+  $('impBtn').disabled = true;
+  try {
+    const it = await api('/instances/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, path, port: +$('impPort').value || 25565, memoryMB: +$('impMem').value || 2048 }),
+    });
+    $('importOverlay').classList.remove('show');
+    toast('导入中，进度见控制台');
+    await loadAll();
+    openConsole(it.id);
+  } catch (e) { $('impErr').textContent = e.message; }
+  finally { $('impBtn').disabled = false; }
+}
+
+function createTypeHint() {
+  const hints = {
+    paper: '装插件（plugins）不需要玩家客户端装任何东西',
+    purpur: 'Paper 的下游加强版，兼容全部 Paper/Spigot 插件，提供大量可调游戏项',
+    fabric: '玩家客户端也要装 Fabric 和相同模组——建好后可在模组页一键导出客户端包发朋友',
+    forge: '玩家客户端也要装 Forge 和相同模组；首次创建需运行官方安装器，耗时稍长',
+    neoforge: '仅支持 1.20.2 及以上版本；客户端需装 NeoForge 和相同模组',
+  };
+  $('cTypeHint').textContent = hints[$('cType').value] || '';
+  cLoaderReset();
+}
+
+// 加载器版本：默认折叠自动选最新，可展开手动选
+function cLoaderReset() {
+  const typ = $('cType').value;
+  const isModded = ['fabric', 'forge', 'neoforge'].includes(typ);
+  $('cLoaderBox').style.display = isModded ? '' : 'none';
+  $('cLoaderVer').style.display = 'none';
+  $('cLoaderVer').innerHTML = '<option value="">自动（最新稳定/推荐）</option>';
+  $('cLoaderSummary').textContent = '加载器版本：自动选择最新稳定版';
+  $('cLoaderToggle').textContent = '手动选择';
+  $('cLoaderToggle').dataset.open = '';
+}
+
+async function cLoaderExpand(btn) {
+  const sel = $('cLoaderVer');
+  if (btn.dataset.open) {
+    sel.style.display = 'none';
+    btn.textContent = '手动选择';
+    btn.dataset.open = '';
+    return;
+  }
+  btn.dataset.open = '1';
+  btn.textContent = '收起';
+  sel.style.display = '';
+  if (sel.options.length <= 1) {
+    sel.innerHTML = '<option value="">加载中…</option>';
+    try {
+      const d = await api(`/loaders?type=${$('cType').value}&version=${encodeURIComponent($('cVersion').value)}`);
+      sel.innerHTML = '<option value="">自动（最新稳定/推荐）</option>' +
+        (d.versions || []).map(v => `<option value="${esc(v)}" ${v === d.default ? '' : ''}>${esc(v)}${v === d.default ? '（推荐）' : ''}</option>`).join('');
+    } catch (e) {
+      sel.innerHTML = '<option value="">自动（列表加载失败）</option>';
+    }
+  }
+  sel.onchange = () => {
+    $('cLoaderSummary').textContent = sel.value
+      ? '加载器版本：' + sel.value
+      : '加载器版本：自动选择最新稳定版';
+  };
+}
+
+async function submitCreate() {
+  const name = $('cName').value.trim();
+  const version = $('cVersion').value;
+  if (!name) { $('cErr').textContent = '请填写世界名称'; return; }
+  if (!version) { $('cErr').textContent = '请选择版本'; return; }
+  $('cSubmit').disabled = true;
+  try {
+    const it = await api('/instances', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name, version,
+        type: $('cType').value,
+        loaderVersion: $('cLoaderVer').value || '',
+        port: +$('cPort').value || 25565,
+        memoryMB: +$('cMem').value || 2048,
+        dir: $('cDir').value.trim(),
+      }),
+    });
+    closeCreate();
+    $('cName').value = '';
+    $('cDir').value = '';
+    toast('世界创建中，正在下载服务端核心…');
+    await loadAll();
+    openConsole(it.id);
+  } catch (e) {
+    $('cErr').textContent = e.message;
+  } finally {
+    $('cSubmit').disabled = false;
+  }
+}
+
+/* ===== 实例详情页 ===== */
+function setConsoleTab(tab) {
+  if (currentId) history.replaceState(null, '', '#inst/' + currentId + '/' + tab);
+  document.querySelectorAll('[data-ctab]').forEach(b => b.classList.toggle('active', b.dataset.ctab === tab));
+  ['console','players','files','mods','stats','net','props'].forEach(t => $('ctab-' + t).style.display = t === tab ? '' : 'none');
+  if (tab === 'players') { playersId = currentId; loadPlayers(); startChatPoll(); } else stopChatPoll();
+  if (tab === 'files') loadFiles(fileCwd || '');
+  if (tab === 'mods') { installedId = currentId; $('updatesList').innerHTML = ''; loadInstalled(); }
+  if (tab === 'stats') { loadPlayerStats(); loadHealth(); }
+  if (tab === 'net') { propsId = currentId; loadNetTab(currentId); }
+  if (tab === 'props') loadPropsForm(currentId);
+}
+
+function loadNetTab(id) {
+  $('netDocList').style.display = 'none';
+  loadAddresses();
+  checkGeyser(id);
+  loadFrp(id);
+  loadStatusPage(id);
+  loadTalkCount();
+}
+
+async function loadAddresses() {
+  const box = $('addrList');
+  try {
+    const d = await api(`/instances/${currentId}/addresses`);
+    const list = d.addresses || [];
+    if (!list.length) {
+      box.innerHTML = '<span style="color:#6e6a8e">暂无可用地址。局域网地址随面板网络自动出现；异地联机先开启下方 UPnP 或 frp。</span>';
+      return;
+    }
+    box.innerHTML = list.map(a => `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+        ${a.recommend ? '<span style="background:rgba(106,255,176,.15);color:#6affb0;font-size:11px;padding:2px 8px;border-radius:8px">推荐</span>' : ''}
+        <code style="color:#e8e6f5;background:rgba(0,0,0,.25);padding:3px 10px;border-radius:8px;cursor:pointer" title="点击复制" onclick="copyAddr('${esc(a.addr)}')">${esc(a.addr)}</code>
+        <span style="color:#9a96b8;font-size:12px">${esc(a.label)}</span>
+        ${a.warn ? `<div style="flex-basis:100%;color:#ffb86a;font-size:12px;margin-top:2px">注意：${esc(a.warn)}</div>` : ''}
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = `<span style="color:#ff5c8a">${esc(e.message)}</span>`;
+  }
+}
+
+/* ===== 语音开黑(Quick-Talk,面板内置 Go 中转) ===== */
+function talkRoom() {
+  // 房间号 = 实例 ID 前 8 位大写,天然与世界一一对应且不易撞
+  return (currentId || '').slice(0, 8).toUpperCase();
+}
+function talkUrl() {
+  // 优先用后端算好的地址(frp 穿透在跑时给公网地址),兜底局域网 HTTPS
+  if (window._talkUrl) return window._talkUrl;
+  const lan = window._lanIP;
+  if (lan) return `https://${lan}:8446/talk/#/room/${talkRoom()}`;
+  return `${location.protocol}//${location.host}/talk/#/room/${talkRoom()}`;
+}
+function talkOpen() {
+  window.open(`/talk/#/room/${talkRoom()}`, '_blank');
+}
+function talkCopyLink() {
+  copyAddr(talkUrl());
+}
+async function loadTalkCount() {
+  const el = $('talkCount');
+  if (!el) return;
+  try {
+    const rooms = await api('/talk/rooms');
+    const n = rooms[talkRoom()] || 0;
+    el.style.display = n > 0 ? '' : 'none';
+    el.textContent = `${n} 人在线`;
+  } catch { el.style.display = 'none'; }
+  try {
+    const d = await api(`/instances/${currentId}/talkpw`);
+    $('talkPwBtn').textContent = d.hasPassword ? '密码已启用' : '设置密码';
+    window._talkUrl = d.url || '';
+  } catch {}
+  const it = instances.find(i => i.id === currentId);
+  $('talkInviteCk').checked = !!(it && it.talkInvite);
+}
+
+async function talkInviteToggle(ck) {
+  try {
+    await api(`/instances/${currentId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ talkInvite: ck.checked }) });
+    toast(ck.checked ? '已开启：玩家进服会收到语音房链接' : '已关闭进服邀请');
+    loadAll();
+  } catch (e) { ck.checked = !ck.checked; toast(e.message); }
+}
+async function talkPwToggle() {
+  try {
+    const d = await api(`/instances/${currentId}/talkpw`);
+    if (d.hasPassword) {
+      if (!confirm('语音房当前有密码。要取消密码,让任何人可进吗?')) return;
+      await api(`/instances/${currentId}/talkpw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: '' }) });
+      toast('语音房密码已取消');
+    } else {
+      const pw = prompt('设置语音房密码(朋友进房时需输入):');
+      if (!pw) return;
+      await api(`/instances/${currentId}/talkpw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+      toast('语音房密码已设置');
+    }
+    loadTalkCount();
+  } catch (e) { toast(e.message); }
+}
+
+function openConsole(id, tab) {
+  currentId = id;
+  fileCwd = '';
+  const it = instances.find(i => i.id === id);
+  $('consoleTitle').textContent = it ? it.name : '控制台';
+  $('instMeta').textContent = it ? `${typeLabel(it.type)} ${it.version || ''} · 端口 ${it.port} · 内存 ${it.memoryMB}MB` : '';
+  $('consoleOut').innerHTML = '';
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
+  document.querySelectorAll('nav .links span').forEach(s => s.classList.remove('active'));
+  $('page-inst').classList.add('show');
+  window.scrollTo(0, 0);
+  setConsoleTab(tab || 'console');
+  updateConsoleBtn();
+  if (ws) { ws.onclose = null; ws.close(); }
+  ws = new WebSocket(`ws://${location.host}/api/instances/${id}/console`);
+  ws.onmessage = ev => appendLine(ev.data);
+  ws.onclose = () => appendLine('[MCS] 控制台连接已断开');
+}
+
+async function cloneWorld(btn) {
+  const it = instances.find(i => i.id === currentId);
+  if (!it) return;
+  if (!confirm(`克隆「${it.name}」？\n完整复制存档、模组和配置为一个新世界（自动换端口），可用作测试服。`)) return;
+  btn.disabled = true; btn.textContent = '克隆中…';
+  try {
+    const d = await api(`/instances/${currentId}/clone`, { method: 'POST' });
+    toast(`已克隆为「${d.name}」（端口 ${d.port}）`);
+    await loadAll();
+    openConsole(d.id);
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; btn.textContent = '克隆'; }
+}
+
+/* ===== 文件管理 ===== */
+let fileCwd = '';
+const editableRe = /\.(yml|yaml|json|properties|toml|txt|conf|cfg|ini|log|mcmeta|env|bat|sh)$/i;
+async function loadFiles(path) {
+  fileCwd = path || '';
+  closeEditor();
+  $('fileErr').textContent = '';
+  $('fileCrumb').innerHTML = '<a href="javascript:loadFiles(\'\')" style="color:#9a96b8">根目录</a>' +
+    fileCwd.split('/').filter(Boolean).map((seg, i, arr) => {
+      const p = arr.slice(0, i + 1).join('/');
+      return ` / <a href="javascript:loadFiles('${p.replace(/'/g, "\\'")}')" style="color:#c8c4e0">${esc(seg)}</a>`;
+    }).join('');
+  try {
+    $('zipDirBtn').href = `/api/instances/${currentId}/files/zipdir?path=${encodeURIComponent(fileCwd)}`;
+    const files = await api(`/instances/${currentId}/files?path=${encodeURIComponent(fileCwd)}`);
+    if (!files.length) { $('fileList').innerHTML = '<div class="empty-hint">空目录</div>'; return; }
+    $('fileList').innerHTML = files.map(f => {
+      const rel = (fileCwd ? fileCwd + '/' : '') + f.name;
+      const relJs = JSON.stringify(rel);
+      const isZip = /\.(zip|mrpack)$/i.test(f.name);
+      return `
+      <div class="bk-row" style="padding:7px 12px">
+        <div style="min-width:0;display:flex;align-items:center;gap:8px;flex:1;cursor:${f.isDir ? 'pointer' : 'default'}"
+             ${f.isDir ? `onclick='loadFiles(${relJs})'` : ''}>
+          <span>${f.isDir ? '[目录]' : ''}</span>
+          <div class="fname" style="font-size:13px">${esc(f.name)}</div>
+          ${f.isDir ? '' : `<div class="fmeta" style="margin-left:auto">${fmtBytes(f.size)}</div>`}
+        </div>
+        <div class="sp">
+          ${!f.isDir && editableRe.test(f.name) ? `<button class="qbtn ghost sm" onclick='openEditor(${relJs})'>编辑</button>` : ''}
+          ${isZip ? `<button class="qbtn ghost sm" onclick='unzipFile(${relJs}, this)'>解压</button>` : ''}
+          <button class="qbtn ghost sm" onclick='renameFile(${relJs})'>重命名</button>
+          ${f.isDir ? '' : `<a class="qbtn ghost sm" href="/api/instances/${currentId}/files/download?path=${encodeURIComponent(rel)}" style="text-decoration:none">下载</a>`}
+          <button class="qbtn ghost sm" style="color:#ff5c8a" onclick='deleteFile(${relJs})'>删除</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    $('fileList').innerHTML = `<div class="empty-hint">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+/* ===== 在线编辑 ===== */
+let editPath = null;
+async function openEditor(rel) {
+  $('fileErr').textContent = '';
+  try {
+    const d = await api(`/instances/${currentId}/files/content?path=${encodeURIComponent(rel)}`);
+    editPath = rel;
+    $('editName').textContent = rel;
+    $('editArea').value = d.content;
+    $('fileList').style.display = 'none';
+    $('fileEditor').style.display = '';
+  } catch (e) { $('fileErr').textContent = e.message; }
+}
+
+function closeEditor() {
+  editPath = null;
+  $('fileEditor').style.display = 'none';
+  $('fileList').style.display = '';
+}
+
+async function saveEditor() {
+  if (!editPath) return;
+  $('editSaveBtn').disabled = true;
+  try {
+    await api(`/instances/${currentId}/files/content`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: editPath, content: $('editArea').value }),
+    });
+    toast('已保存' + (editPath.endsWith('.properties') || editPath.match(/\.(yml|yaml|toml)$/i) ? '，重启服务器生效' : ''));
+  } catch (e) { $('fileErr').textContent = e.message; }
+  finally { $('editSaveBtn').disabled = false; }
+}
+
+async function mkdirHere() {
+  const name = prompt('新文件夹名称：');
+  if (!name || !name.trim()) return;
+  try {
+    await api(`/instances/${currentId}/files/mkdir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: (fileCwd ? fileCwd + '/' : '') + name.trim() }),
+    });
+    toast('已创建');
+    loadFiles(fileCwd);
+  } catch (e) { $('fileErr').textContent = e.message; }
+}
+
+async function renameFile(rel) {
+  const cur = rel.split('/').pop();
+  const name = prompt('重命名为：', cur);
+  if (!name || !name.trim() || name.trim() === cur) return;
+  try {
+    await api(`/instances/${currentId}/files/rename`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: rel, newName: name.trim() }),
+    });
+    toast('已重命名');
+    loadFiles(fileCwd);
+  } catch (e) { $('fileErr').textContent = e.message; }
+}
+
+async function unzipFile(rel, btn) {
+  btn.disabled = true; btn.textContent = '解压中…';
+  try {
+    const d = await api(`/instances/${currentId}/files/unzip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: rel }),
+    });
+    toast('已解压到 ' + d.dest);
+    loadFiles(fileCwd);
+  } catch (e) { $('fileErr').textContent = e.message; btn.disabled = false; btn.textContent = '解压'; }
+}
+
+async function deleteFile(rel) {
+  if (!confirm(`删除「${rel}」？目录会连同内容一起删除，不可恢复`)) return;
+  try {
+    await api(`/instances/${currentId}/files?path=${encodeURIComponent(rel)}`, { method: 'DELETE' });
+    toast('已删除');
+    loadFiles(fileCwd);
+  } catch (e) { $('fileErr').textContent = e.message; }
+}
+
+async function uploadFile(input) {
+  const f = input.files[0];
+  input.value = '';
+  if (!f) return;
+  $('fileErr').textContent = '';
+  try {
+    const fd = new FormData();
+    fd.append('path', fileCwd);
+    fd.append('file', f);
+    await api(`/instances/${currentId}/files/upload`, { method: 'POST', body: fd });
+    toast('上传完成');
+    loadFiles(fileCwd);
+  } catch (e) { $('fileErr').textContent = e.message; }
+}
+
+function updateConsoleBtn() {
+  if (!currentId) return;
+  const it = instances.find(i => i.id === currentId);
+  if (!it) return;
+  const btn = $('consoleStartBtn');
+  const isRunning = it.status === 'running' || it.status === 'starting';
+  btn.textContent = isRunning ? '停止' : '启动';
+  btn.className = 'play-btn' + (isRunning ? ' danger' : '');
+  btn.disabled = it.status === 'downloading' || it.status === 'stopping';
+  $('consoleRestartBtn').style.display = isRunning ? '' : 'none';
+  $('consoleSleepBtn').style.display = (it.status === 'running' && it.type !== 'generic') ? '' : 'none';
+}
+
+async function manualSleep() {
+  if (!currentId) return;
+  if (!confirm('进入待机？服务器会关闭释放内存，但玩家在列表里仍能看到本服，点击进入会自动唤醒。')) return;
+  try {
+    await api(`/instances/${currentId}/sleep`, { method: 'POST' });
+    toast('正在进入待机…');
+    loadAll();
+  } catch (e) { toast(e.message); }
+}
+
+async function restartSrv() {
+  if (!currentId) return;
+  if (!confirm('重启服务器？在线玩家会被断开，停止后会自动再启动。')) return;
+  const btn = $('consoleRestartBtn');
+  btn.disabled = true;
+  try {
+    const d = await api(`/instances/${currentId}/restart`, { method: 'POST' });
+    toast(d.message);
+    loadAll();
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; }
+}
+
+function appendLine(text) {
+  const out = $('consoleOut');
+  const div = document.createElement('div');
+  if (/ERROR|SEVERE|Exception/.test(text)) div.className = 'err-line';
+  else if (/WARN/.test(text)) div.className = 'warn';
+  else if (text.startsWith('> ')) div.className = 'cmd';
+  div.textContent = text;
+  const stick = out.scrollTop + out.clientHeight >= out.scrollHeight - 40;
+  out.appendChild(div);
+  while (out.childNodes.length > 800) out.removeChild(out.firstChild);
+  if (stick) out.scrollTop = out.scrollHeight;
+}
+
+function closeConsole() {
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  stopChatPoll();
+  currentId = null;
+  showPage('home');
+}
+
+function consoleAction() { if (currentId) toggle(currentId); }
+
+async function deleteWorld() {
+  const it = instances.find(i => i.id === currentId);
+  if (!it) return;
+  if (!confirm(`确定删除世界「${it.name}」吗？存档会一起删除，无法恢复！`)) return;
+  try {
+    await api(`/instances/${currentId}`, { method: 'DELETE' });
+    toast('已删除');
+    closeConsole();
+    loadAll();
+  } catch (e) { toast(e.message); }
+}
+
+function sendCmd() {
+  const inp = $('consoleCmd');
+  const cmd = inp.value.trim();
+  if (!cmd || !ws || ws.readyState !== 1) return;
+  ws.send(cmd);
+  pushCmdHistory(cmd);
+  inp.value = '';
+}
+
+/* ===== 指令历史 + 快捷指令 ===== */
+let cmdHist = [];
+try { cmdHist = JSON.parse(localStorage.getItem('mcsCmdHist') || '[]'); } catch (e) {}
+let histIdx = -1;
+
+function pushCmdHistory(cmd) {
+  if (cmdHist[0] !== cmd) {
+    cmdHist.unshift(cmd);
+    if (cmdHist.length > 50) cmdHist.pop();
+    try { localStorage.setItem('mcsCmdHist', JSON.stringify(cmdHist)); } catch (e) {}
+  }
+  histIdx = -1;
+}
+
+function consoleKey(ev) {
+  if (ev.key === 'Enter') { sendCmd(); return; }
+  if (ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    if (histIdx < cmdHist.length - 1) { histIdx++; ev.target.value = cmdHist[histIdx]; }
+  } else if (ev.key === 'ArrowDown') {
+    ev.preventDefault();
+    if (histIdx > 0) { histIdx--; ev.target.value = cmdHist[histIdx]; }
+    else { histIdx = -1; ev.target.value = ''; }
+  }
+}
+
+function quickCmd(cmd, paperOnly) {
+  if (!ws || ws.readyState !== 1) { toast('控制台未连接'); return; }
+  const it = instances.find(i => i.id === currentId);
+  if (!it || (it.status !== 'running' && it.status !== 'starting')) { toast('服务器未在运行'); return; }
+  if (paperOnly && it.type !== 'paper') { toast('该指令仅 Paper 服务端支持'); return; }
+  ws.send(cmd);
+  pushCmdHistory(cmd);
+}
+
+function promptCmd(prefix, hint) {
+  const name = prompt(hint);
+  if (!name || !name.trim()) return;
+  quickCmd(prefix + name.trim());
+}
+
+/* ===== 模组市场 ===== */
+let modType = 'plugin';
+let modOffset = 0;
+let installsMap = {}; // slug → [instName…]
+
+async function loadInstalls() {
+  try {
+    const recs = await api('/mods/installs');
+    installsMap = {};
+    for (const r of recs) {
+      const inst = instances.find(i => i.id === r.instId);
+      if (!installsMap[r.slug]) installsMap[r.slug] = [];
+      installsMap[r.slug].push(inst ? inst.name : '未知世界');
+    }
+  } catch (e) {}
+}
+
+async function initMods() {
+  try {
+    const vs = await api('/versions');
+    $('modVersion').innerHTML = '<option value="">全部游戏版本</option>' +
+      vs.filter(v => /^\d+\.\d+(\.\d+)?$/.test(v)).map(v => `<option>${v}</option>`).join('');
+  } catch (e) {}
+  refreshModTarget();
+  await loadInstalls();
+  searchMods(true);
+}
+
+// 目标世界下拉：选择后自动按该世界的版本+加载器筛选
+function refreshModTarget() {
+  const sel = $('modTarget');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">全部内容（不指定世界）</option>' +
+    instances.map(i => `<option value="${i.id}" ${i.id === cur ? 'selected' : ''}>为「${esc(i.name)}」找（${typeLabel(i.type)} ${esc(i.version || '')}）</option>`).join('');
+}
+
+function targetChanged() {
+  const it = instances.find(i => i.id === $('modTarget').value);
+  if (it) {
+    $('modVersion').value = /^\d+\.\d+(\.\d+)?$/.test(it.version || '') ? it.version : '';
+    const ld = { paper: 'paper', fabric: 'fabric', forge: 'forge', neoforge: 'neoforge' }[it.type] || '';
+    $('modLoader').value = ld;
+    // Paper 服自动切到插件 tab，模组端切到模组 tab
+    if (it.type === 'paper' && modType === 'mod') setModType('plugin');
+    else if (it.type !== 'paper' && modType === 'plugin') setModType('mod');
+    else searchMods(true);
+    return;
+  }
+  $('modVersion').value = '';
+  $('modLoader').value = '';
+  searchMods(true);
+}
+
+function setModType(t) {
+  modType = t;
+  document.querySelectorAll('.type-tab').forEach(b => b.classList.toggle('active', b.dataset.type === t));
+  // 加载器选项按类型微调
+  const loaderSel = $('modLoader');
+  loaderSel.style.display = (t === 'datapack') ? 'none' : '';
+  searchMods(true);
+}
+
+const sideLabel = { required: '必装', optional: '可选', unsupported: '不支持' };
+
+async function searchMods(reset) {
+  const list = $('modList');
+  if (reset) { modOffset = 0; list.innerHTML = '<div class="empty-hint">搜索中…</div>'; }
+  const params = new URLSearchParams({
+    q: $('modQ').value.trim(),
+    type: modType,
+    sort: $('modSort').value,
+    offset: modOffset,
+  });
+  if ($('modVersion').value) params.set('version', $('modVersion').value);
+  if ($('modCategory').value) params.set('category', $('modCategory').value);
+  if ($('modLoader').value && modType !== 'datapack') params.set('loader', $('modLoader').value);
+  try {
+    const data = await api('/mods/search?' + params.toString());
+    if (reset) list.innerHTML = '';
+    if (!data.hits.length && reset) {
+      list.innerHTML = '<div class="empty-hint">没有找到匹配的内容，换个关键词或筛选条件试试</div>';
+      $('modMore').style.display = 'none';
+      return;
+    }
+    for (const h of data.hits) {
+      const card = document.createElement('div');
+      card.className = 'mod-card';
+      const icon = h.iconUrl
+        ? `<img class="mod-icon" src="${esc(h.iconUrl)}" loading="lazy" onerror="this.outerHTML='<div class=mod-icon>${esc((h.title||'?')[0])}</div>'">`
+        : `<div class="mod-icon">${esc((h.title||'?')[0])}</div>`;
+      const server = h.serverSide && h.serverSide !== 'unsupported'
+        ? `<span class="side-ok">服务端${sideLabel[h.serverSide]||''}</span>`
+        : (h.projectType === 'modpack' || h.projectType === 'datapack' ? '' : '<span>仅客户端</span>');
+      const vers = (h.versions||[]).slice(-4).join(' / ');
+      const installed = installsMap[h.slug]
+        ? `<span class="side-ok" title="已安装到：${esc(installsMap[h.slug].join('、'))}">已安装（${installsMap[h.slug].length}）</span>`
+        : '';
+      card.innerHTML = `
+        ${icon}
+        <div class="mod-info">
+          <div class="mod-title">
+            <a href="${esc(h.pageUrl)}" target="_blank" rel="noopener" title="打开 Modrinth 官方页面">${esc(h.title)}</a>
+            <span class="by">by ${esc(h.author)}</span>
+          </div>
+          <div class="mod-desc">${esc(h.description)}</div>
+          <div class="mod-meta">
+            <span>下载 ${fmtNum(h.downloads)}</span>
+            <span>收藏 ${fmtNum(h.follows)}</span>
+            ${installed}
+            ${server}
+            ${vers ? `<span>${esc(vers)}</span>` : ''}
+            <span>更新于 ${timeAgo(h.updated)}</span>
+          </div>
+        </div>
+        <div class="mod-actions">
+          <button class="qbtn main sm" onclick='openModVersions(${JSON.stringify(h.slug)}, ${JSON.stringify(h.title)}, ${JSON.stringify(h.projectType)})'>
+            ${h.projectType === 'modpack' ? '查看文件' : '安装'}</button>
+          <a class="qbtn ghost sm" style="text-align:center;text-decoration:none"
+             href="${esc(h.pageUrl)}" target="_blank" rel="noopener">官方页面</a>
+        </div>`;
+      list.appendChild(card);
+    }
+    modOffset += data.hits.length;
+    $('modMore').style.display = modOffset < data.total ? '' : 'none';
+  } catch (e) {
+    if (reset) list.innerHTML = `<div class="empty-hint">检索失败：${esc(e.message)}</div>`;
+    else toast(e.message);
+  }
+}
+
+let modVerCtx = null;
+
+// 各服务端类型能装的加载器（Modrinth loader 标签）
+function compatLoaders(instType) {
+  return {
+    paper:    ['paper', 'spigot', 'bukkit', 'folia'],
+    fabric:   ['fabric'],
+    forge:    ['forge'],
+    neoforge: ['neoforge'],
+  }[instType] || [];
+}
+
+// 判断某版本文件与实例的兼容性: 2=版本+加载器都匹配 1=仅加载器匹配 0=不兼容
+function compatScore(v, inst) {
+  if (!inst) return 0;
+  if (modVerCtx.kind === 'datapack') {
+    return (v.gameVersions || []).includes(inst.version) ? 2 : 1;
+  }
+  const ok = (v.loaders || []).some(l => compatLoaders(inst.type).includes(l.toLowerCase()));
+  if (!ok) return 0;
+  return (v.gameVersions || []).includes(inst.version) ? 2 : 1;
+}
+
+async function openModVersions(slug, title, kind) {
+  modVerCtx = { slug, title, kind };
+  $('modVerTitle').textContent = title + ' · 选择版本';
+  $('modVerErr').textContent = '';
+  const instSel = $('modVerInst');
+  instSel.innerHTML = instances.length
+    ? instances.map(i => `<option value="${i.id}">${esc(i.name)}（${typeLabel(i.type)} ${esc(i.version || '')}）</option>`).join('')
+    : '<option value="">还没有世界，请先创建</option>';
+  if ($('modTarget').value) instSel.value = $('modTarget').value;
+  instSel.onchange = renderModVersions;
+  $('modVerList').innerHTML = '<div class="empty-hint">加载版本列表…</div>';
+  $('modVerOverlay').classList.add('show');
+  try {
+    // 拉全量版本列表（不带筛选），由前端按目标世界分类推荐
+    const data = await api(`/mods/${encodeURIComponent(slug)}/versions?`);
+    modVerCtx.versions = data.versions || [];
+    modVerCtx.depInfo = data.deps || {};
+    renderModVersions();
+  } catch (e) {
+    $('modVerList').innerHTML = `<div class="empty-hint">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+function renderModVersions() {
+  const vers = modVerCtx.versions;
+  if (!vers.length) {
+    $('modVerList').innerHTML = '<div class="empty-hint">该项目没有可下载的文件</div>';
+    return;
+  }
+  const inst = instances.find(i => i.id === $('modVerInst').value);
+  const depInfo = modVerCtx.depInfo;
+  const isPack = modVerCtx.kind === 'modpack';
+
+  // 计算兼容性并找推荐（版本+加载器全匹配的第一个，即最新）
+  let bestIdx = -1;
+  const scores = vers.map((v, i) => {
+    const s = isPack ? 0 : compatScore(v, inst);
+    if (s === 2 && bestIdx === -1) bestIdx = i;
+    return s;
+  });
+
+  // 兼容性横幅
+  let banner = '';
+  if (!isPack && inst) {
+    if (bestIdx >= 0) {
+      banner = `<div style="padding:8px 12px;margin-bottom:10px;border-radius:10px;background:rgba(106,255,176,.08);border:1px solid rgba(106,255,176,.25);font-size:13px">
+        已为 <b>${esc(inst.name)}</b>（${typeLabel(inst.type)} ${esc(inst.version)}）自动选择最优兼容版本，见下方「推荐」标记</div>`;
+    } else if (scores.some(s => s === 1)) {
+      banner = `<div style="padding:8px 12px;margin-bottom:10px;border-radius:10px;background:rgba(255,184,106,.08);border:1px solid rgba(255,184,106,.3);font-size:13px;color:#ffb86a">
+        没有完全匹配 ${typeLabel(inst.type)} ${esc(inst.version)} 的文件，以下仅加载器兼容（游戏版本不同，装了可能出问题）</div>`;
+    } else {
+      banner = `<div style="padding:8px 12px;margin-bottom:10px;border-radius:10px;background:rgba(255,92,138,.08);border:1px solid rgba(255,92,138,.3);font-size:13px;color:#ff5c8a">
+        该模组可能不存在与 <b>${esc(inst.name)}</b>（${typeLabel(inst.type)} ${esc(inst.version)}）兼容的版本</div>`;
+    }
+  }
+
+  // 按加载器分组（datapack/整合包按「数据包/整合包」一组）
+  const groups = {};
+  vers.forEach((v, i) => {
+    const key = (v.loaders || []).map(l => l.toLowerCase()).sort().join(' / ') || '其他';
+    (groups[key] = groups[key] || []).push(i);
+  });
+  // 组排序：含推荐的组最前，其次含兼容项的组
+  const groupKeys = Object.keys(groups).sort((a, b) => {
+    const rank = k => groups[k].includes(bestIdx) ? 0 : groups[k].some(i => scores[i] > 0) ? 1 : 2;
+    return rank(a) - rank(b);
+  });
+
+  $('modVerList').innerHTML = banner + groupKeys.map(gk => {
+    const rows = groups[gk].map(i => {
+      const v = vers[i];
+      const deps = (v.deps || []).map(id => depInfo[id]).filter(Boolean);
+      const depHtml = deps.length
+        ? `<div class="vmeta" style="color:#ffb86a; margin-top:4px">需要前置：${deps.map(d =>
+            `<a href="https://modrinth.com/mod/${esc(d.slug)}" target="_blank" rel="noopener" style="color:#ffb86a">${esc(d.title)}</a>`).join('、')}
+            <button class="qbtn ghost sm" style="padding:2px 10px;font-size:12px;margin-left:6px" onclick="installDeps(${i})">一并安装前置</button></div>`
+        : '';
+      const badge = i === bestIdx
+        ? '<span style="color:#0d0c1d;background:#6affb0;border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700;margin-left:6px">推荐</span>'
+        : (!isPack && inst && scores[i] === 0 ? '<span style="color:#ff5c8a;font-size:11px;margin-left:6px">加载器不兼容</span>'
+          : (!isPack && inst && scores[i] === 1 ? '<span style="color:#ffb86a;font-size:11px;margin-left:6px">游戏版本不同</span>' : ''));
+      const hl = i === bestIdx ? 'border:1px solid rgba(106,255,176,.45);border-radius:10px' : '';
+      return `
+      <div class="ver-row" style="${hl}${!isPack && inst && scores[i] === 0 ? ';opacity:.45' : ''}">
+        <div style="min-width:0">
+          <div><b>${esc(v.name || v.version)}</b>${badge}</div>
+          <div class="vmeta">${esc((v.gameVersions||[]).slice(0,6).join(' '))}${(v.gameVersions||[]).length > 6 ? ' …' : ''} · ${fmtBytes(v.size)}</div>
+          ${depHtml}
+        </div>
+        <div class="sp">
+          ${isPack
+            ? `<button class="qbtn main sm" onclick="openPackInstall(${i})">安装为新世界</button>
+               <a class="qbtn ghost sm" style="text-decoration:none" href="${esc(v.url)}" target="_blank" rel="noopener">下载</a>`
+            : `<button class="qbtn main sm" ${scores[i] === 0 && inst ? 'style="opacity:.55"' : ''} onclick="installMod(${i}, ${scores[i]})">安装</button>`}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="section-title" style="margin:12px 0 6px">${esc(gk)}</div>` + rows;
+  }).join('');
+}
+
+// 一并安装某个版本的全部必需前置（按当前版本/加载器筛选自动匹配）
+async function installDeps(idx) {
+  const v = modVerCtx.versions[idx];
+  const instId = $('modVerInst').value;
+  if (!instId) { $('modVerErr').textContent = '请先创建一个世界'; return; }
+  const deps = (v.deps || []).map(id => modVerCtx.depInfo[id]).filter(Boolean);
+  if (!deps.length) return;
+  $('modVerErr').textContent = '';
+  let okCount = 0, failed = [];
+  toast(`正在安装 ${deps.length} 个前置…`);
+  for (const d of deps) {
+    try {
+      const params = new URLSearchParams();
+      if ($('modVersion').value) params.set('version', $('modVersion').value);
+      if ($('modLoader').value) params.set('loader', $('modLoader').value);
+      const dd = await api(`/mods/${encodeURIComponent(d.slug)}/versions?` + params.toString());
+      const dv = (dd.versions || [])[0];
+      if (!dv || !dv.url) { failed.push(d.title); continue; }
+      const kind = modVerCtx.kind === 'mod' ? 'mod' : 'plugin';
+      await api('/mods/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instId, url: dv.url, filename: dv.filename, kind,
+          slug: d.slug, title: d.title, versionId: dv.id }),
+      });
+      okCount++;
+    } catch (e) { failed.push(d.title); }
+  }
+  toast(`前置安装完成：成功 ${okCount} 个` + (failed.length ? `，失败：${failed.join('、')}` : ''));
+  loadInstalls();
+}
+
+async function installMod(idx, score) {
+  const v = modVerCtx.versions[idx];
+  const instId = $('modVerInst').value;
+  if (!instId) { $('modVerErr').textContent = '请先创建一个世界'; return; }
+  if (score === 0) {
+    const inst = instances.find(i => i.id === instId);
+    if (!confirm(`这个文件标注的加载器与「${inst ? inst.name : ''}」（${inst ? typeLabel(inst.type) : ''}）不匹配，装上大概率无法加载。\n\n仍然继续安装吗？`)) return;
+  } else if (score === 1) {
+    const inst = instances.find(i => i.id === instId);
+    if (!confirm(`这个文件没有标注支持 Minecraft ${inst ? inst.version : ''}（游戏版本不同），可能出现兼容问题。\n\n仍然继续安装吗？`)) return;
+  }
+  $('modVerErr').textContent = '';
+  try {
+    const kind = modVerCtx.kind === 'mod' ? 'mod' : modVerCtx.kind === 'datapack' ? 'datapack' : 'plugin';
+    const res = await api('/mods/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instId, url: v.url, filename: v.filename, kind,
+        slug: modVerCtx.slug, title: modVerCtx.title, versionId: v.id }),
+    });
+    toast(`已安装到 ${res.path}，重启服务器生效`);
+    $('modVerOverlay').classList.remove('show');
+    loadInstalls().then(() => searchMods(true));
+  } catch (e) {
+    $('modVerErr').textContent = e.message;
+  }
+}
+
+/* ===== 整合包安装 ===== */
+let packVer = null;
+let packLocal = null;   // 本地上传的 File，与 packVer 二选一
+function openPackInstall(idx) {
+  packVer = modVerCtx.versions[idx];
+  packLocal = null;
+  $('packInfo').textContent = `${modVerCtx.title} · ${packVer.name || packVer.version} · ${fmtBytes(packVer.size)}`;
+  $('packName').value = modVerCtx.title.slice(0, 30);
+  openPackDialog();
+  $('modVerOverlay').classList.remove('show');
+}
+
+function openPackUpload(input) {
+  const f = input.files[0];
+  input.value = '';
+  if (!f) return;
+  packLocal = f;
+  packVer = null;
+  $('packInfo').textContent = `本地文件 · ${f.name} · ${fmtBytes(f.size)}`;
+  $('packName').value = f.name.replace(/\.(mrpack|mcpack|zip)$/i, '').slice(0, 30);
+  openPackDialog();
+}
+
+function openPackDialog() {
+  $('packErr').textContent = '';
+  const used = new Set(instances.map(i => i.port));
+  let p = 25565;
+  while (used.has(p)) p++;
+  $('packPort').value = p;
+  $('packOverlay').classList.add('show');
+}
+
+async function doPackInstall() {
+  const name = $('packName').value.trim();
+  if (!name) { $('packErr').textContent = '请填写世界名称'; return; }
+  $('packBtn').disabled = true;
+  try {
+    let it;
+    if (packLocal) {
+      const fd = new FormData();
+      fd.append('name', name);
+      fd.append('file', packLocal);
+      fd.append('port', $('packPort').value || '25565');
+      fd.append('memoryMB', $('packMem').value || '4096');
+      it = await api('/modpack/upload', { method: 'POST', body: fd });
+    } else {
+      it = await api('/modpack/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          url: packVer.url,
+          filename: packVer.filename,
+          port: +$('packPort').value || 25565,
+          memoryMB: +$('packMem').value || 4096,
+        }),
+      });
+    }
+    $('packOverlay').classList.remove('show');
+    toast('整合包安装中，进度见控制台');
+    showPage('home');
+    await loadAll();
+    openConsole(it.id);
+  } catch (e) {
+    $('packErr').textContent = e.message;
+  } finally {
+    $('packBtn').disabled = false;
+  }
+}
+
+/* ===== 备份 ===== */
+async function loadBackupPage() {
+  // 创建备份行
+  const rows = $('bkCreateRows');
+  rows.innerHTML = instances.length ? instances.map(i => `
+    <div class="bk-row">
+      <div class="fname">${esc(i.name)}</div>
+      <div class="fmeta">${typeLabel(i.type)} ${esc(i.version || '')} · ${statusMap[i.status] ? statusMap[i.status].text : i.status}</div>
+      <div class="sp"><button class="qbtn main sm" onclick="createBackup('${i.id}', this)">立即备份</button></div>
+    </div>`).join('') : '<div class="empty-hint">暂无世界</div>';
+  loadBackups();
+  loadTrash();
+  loadDav();
+  loadCloud();
+  loadAutoBackup();
+}
+
+function loadSettingsPage() {
+  loadAutoBackup();
+  loadMail();
+  loadAI();
+  loadBootstart();
+  loadRestart();
+  loadAuthCfg();
+}
+
+/* ===== 回收站 ===== */
+async function loadTrash() {
+  try {
+    const list = await api('/trash');
+    $('trashList').innerHTML = list.length ? list.map(t => `
+      <div class="bk-row">
+        <div>
+          <div class="fname">${esc(t.instName || t.name)}</div>
+          <div class="fmeta">${typeLabel(t.type)} ${esc(t.version || '')} · ${fmtBytes(t.size)} · 删除于 ${timeAgo(t.deletedAt)}</div>
+        </div>
+        <div class="sp">
+          <button class="qbtn main sm" onclick='restoreTrash(${JSON.stringify(t.name)}, this)'>恢复</button>
+          <button class="qbtn ghost sm" style="color:#ff5c8a" onclick='purgeTrash(${JSON.stringify(t.name)})'>彻底删除</button>
+        </div>
+      </div>`).join('') : '<div class="empty-hint">回收站是空的</div>';
+  } catch (e) {
+    $('trashList').innerHTML = `<div class="empty-hint">${esc(e.message)}</div>`;
+  }
+}
+
+async function restoreTrash(name, btn) {
+  btn.disabled = true;
+  try {
+    const d = await api(`/trash/${encodeURIComponent(name)}/restore`, { method: 'POST' });
+    toast(`「${d.name}」已恢复（端口 ${d.port}）`);
+    await loadAll();
+    loadBackupPage();
+  } catch (e) { toast(e.message); btn.disabled = false; }
+}
+
+async function purgeTrash(name) {
+  if (!confirm('彻底删除后无法再恢复，确定？')) return;
+  try {
+    await api(`/trash/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    toast('已彻底删除');
+    loadTrash();
+  } catch (e) { toast(e.message); }
+}
+
+/* ===== 登录 / 初始化 ===== */
+async function checkAuth() {
+  try {
+    const s = await api('/auth/status');
+    if (s.needSetup) {
+      $('setupOverlay').classList.add('show');
+      $('setupUser').focus();
+      return false;
+    }
+    if (s.enabled && !s.loggedIn) {
+      $('loginOverlay').classList.add('show');
+      $('loginUser').value = s.username || '';
+      (s.username ? $('loginPw') : $('loginUser')).focus();
+      return false;
+    }
+  } catch (e) {}
+  return true;
+}
+
+async function doSetup(skip) {
+  $('setupErr').textContent = '';
+  if (!skip) {
+    if ($('setupPw').value !== $('setupPw2').value) { $('setupErr').textContent = '两次密码不一致'; return; }
+  }
+  $('setupBtn').disabled = true;
+  try {
+    await api('/auth/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(skip ? { skip: true } : { username: $('setupUser').value.trim(), password: $('setupPw').value }),
+    });
+    $('setupOverlay').classList.remove('show');
+    toast(skip ? '已跳过，可随时在设置页开启密码' : '管理员账号已创建');
+    loadAll();
+  } catch (e) { $('setupErr').textContent = e.message; }
+  finally { $('setupBtn').disabled = false; }
+}
+
+async function doLogin() {
+  $('loginErr').textContent = '';
+  $('loginBtn').disabled = true;
+  try {
+    await api('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: $('loginUser').value.trim(), password: $('loginPw').value }),
+    });
+    $('loginOverlay').classList.remove('show');
+    $('loginPw').value = '';
+    loadAll();
+  } catch (e) {
+    $('loginErr').textContent = e.message;
+  } finally {
+    $('loginBtn').disabled = false;
+  }
+}
+
+async function loadAuthCfg() {
+  try {
+    const s = await api('/auth/status');
+    $('authEnabled').checked = !!s.enabled;
+    $('authUser').value = s.username || '';
+  } catch (e) {}
+}
+
+async function saveAuth() {
+  try {
+    await api('/auth/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: $('authEnabled').checked, username: $('authUser').value.trim(), password: $('authPw').value }),
+    });
+    toast($('authEnabled').checked ? '账号设置已保存' : '访问密码已关闭');
+    $('authPw').value = '';
+  } catch (e) { toast(e.message); }
+}
+
+async function doLogout() {
+  await api('/auth/logout', { method: 'POST' }).catch(() => {});
+  location.reload();
+}
+
+/* ===== 已装模组管理 ===== */
+let installedId = null;
+const dirLabel = { 'plugins': '插件', 'mods': '模组', 'world/datapacks': '数据包' };
+
+function openInstalled(id) { openConsole(id, 'mods'); }
+
+async function checkUpdates(btn) {
+  btn.disabled = true; btn.textContent = '检查中…';
+  $('updatesList').innerHTML = '<div class="empty-hint">正在对比 Modrinth 最新版本…</div>';
+  try {
+    const ups = await api(`/mods/updates?instId=${installedId}`);
+    const has = ups.filter(u => u.hasUpdate);
+    const tracked = ups.length;
+    if (!tracked) {
+      $('updatesList').innerHTML = '<div class="empty-hint">没有可追踪的安装记录（只有通过面板安装的模组才能检查更新）</div>';
+    } else if (!has.length) {
+      $('updatesList').innerHTML = `<div class="empty-hint">已检查 ${tracked} 个，全部是最新版本</div>`;
+    } else {
+      $('updatesList').innerHTML =
+        `<div class="section-title" style="margin:14px 0 8px">可更新（${has.length}）</div>` +
+        has.map(u => `
+          <div class="bk-row" style="padding:8px 12px">
+            <div style="min-width:0">
+              <div class="fname" style="font-size:13px">${esc(u.title)}</div>
+              <div class="fmeta">${esc(u.current)} → <span style="color:#6affb0">${esc(u.latestName)}</span></div>
+            </div>
+            <div class="sp">
+              <button class="qbtn main sm" onclick='applyUpdate(${JSON.stringify(u)}, this)'>更新</button>
+            </div>
+          </div>`).join('');
+    }
+  } catch (e) {
+    $('updatesList').innerHTML = `<div class="empty-hint">检查失败：${esc(e.message)}</div>`;
+  }
+  btn.disabled = false; btn.textContent = '检查更新';
+}
+
+async function applyUpdate(u, btn) {
+  btn.disabled = true; btn.textContent = '更新中…';
+  try {
+    await api('/mods/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instId: installedId, slug: u.slug, title: u.title,
+        url: u.url, filename: u.filename, oldFilename: u.current,
+        kind: u.kind, versionId: u.latestId,
+      }),
+    });
+    toast(`${u.title} 已更新，重启服务器生效`);
+    btn.closest('.bk-row').remove();
+    loadInstalled();
+  } catch (e) {
+    toast(e.message);
+    btn.disabled = false; btn.textContent = '更新';
+  }
+}
+
+async function loadInstalled() {
+  const inst = instances.find(i => i.id === installedId);
+  const isModded = inst && ['fabric', 'forge', 'neoforge'].includes(inst.type);
+  $('exportBtns').style.display = isModded ? '' : 'none';
+  if (isModded) {
+    $('exportMrpack').href = `/api/instances/${installedId}/export?format=mrpack`;
+    $('exportZip').href = `/api/instances/${installedId}/export?format=zip`;
+  }
+  try {
+    const files = await api(`/instances/${installedId}/installed`);
+    if (!files.length) {
+      $('installedList').innerHTML = '<div class="empty-hint">还没有安装任何模组或插件，去模组市场逛逛吧</div>';
+      return;
+    }
+    let html = '', lastDir = '';
+    for (const f of files) {
+      if (f.dir !== lastDir) {
+        lastDir = f.dir;
+        html += `<div class="section-title" style="margin:14px 0 8px">${dirLabel[f.dir] || f.dir}</div>`;
+      }
+      const display = f.disabled ? f.name.replace(/\.disabled$/i, '') : f.name;
+      html += `
+        <div class="bk-row" style="padding:8px 12px; ${f.disabled ? 'opacity:.55' : ''}">
+          <div style="min-width:0">
+            <div class="fname" style="font-size:13px">${esc(display)}${f.disabled ? ' <span style="color:#ffb86a">（已禁用）</span>' : ''}</div>
+            <div class="fmeta">${fmtBytes(f.size)}</div>
+          </div>
+          <div class="sp">
+            <button class="qbtn ghost sm" onclick='installedAct(${JSON.stringify(f.disabled ? "enable" : "disable")}, ${JSON.stringify(f.dir)}, ${JSON.stringify(f.name)})'>${f.disabled ? '启用' : '禁用'}</button>
+            <button class="qbtn ghost sm" style="color:#ff5c8a" onclick='installedAct("delete", ${JSON.stringify(f.dir)}, ${JSON.stringify(f.name)})'>删除</button>
+          </div>
+        </div>`;
+    }
+    $('installedList').innerHTML = html;
+  } catch (e) {
+    $('installedList').innerHTML = `<div class="empty-hint">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+async function uploadInstalled(input) {
+  const f = input.files[0];
+  input.value = '';
+  if (!f) return;
+  const it = instances.find(i => i.id === installedId);
+  // Paper/Spigot 装 plugins，模组端装 mods
+  const dir = (it && (it.type === 'paper' || it.type === 'spigot')) ? 'plugins' : 'mods';
+  $('installedErr').textContent = '';
+  try {
+    const fd = new FormData();
+    fd.append('dir', dir);
+    fd.append('file', f);
+    await api(`/instances/${installedId}/installed/upload`, { method: 'POST', body: fd });
+    toast(`已上传到 ${dirLabel[dir]}，重启生效`);
+    loadInstalled();
+  } catch (e) { $('installedErr').textContent = e.message; }
+}
+
+async function installedAct(action, dir, name) {  if (action === 'delete' && !confirm(`删除文件「${name}」？不可恢复`)) return;
+  try {
+    await api(`/instances/${installedId}/installed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, dir, name }),
+    });
+    toast(action === 'delete' ? '已删除' : action === 'disable' ? '已禁用，重启生效' : '已启用，重启生效');
+    loadInstalled();
+  } catch (e) { $('installedErr').textContent = e.message; }
+}
+
+/* ===== 游戏内聊天 ===== */
+let chatTimer = null;
+async function loadChat() {
+  if (!currentId) return;
+  try {
+    const list = await api(`/instances/${currentId}/chat`);
+    const box = $('chatBox');
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.innerHTML = list.length ? list.map(c => {
+      const t = new Date(c.t).toLocaleTimeString('zh', {hour:'2-digit',minute:'2-digit'});
+      return c.player
+        ? `<div><span style="color:#6e6a8e">${t}</span> <b style="color:#7aa2ff">${esc(c.player)}</b>：${esc(c.text)}</div>`
+        : `<div><span style="color:#6e6a8e">${t}</span> <b style="color:#6affb0">[服主]</b>：${esc(c.text)}</div>`;
+    }).join('') : '<div class="empty-hint">暂无聊天记录——玩家进服说话后会出现在这里</div>';
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  } catch (e) {}
+}
+
+function startChatPoll() {
+  stopChatPoll();
+  loadChat();
+  chatTimer = setInterval(loadChat, 5000);
+}
+function stopChatPoll() {
+  if (chatTimer) { clearInterval(chatTimer); chatTimer = null; }
+}
+
+async function sendSay() {
+  const msg = $('chatSay').value.trim();
+  if (!msg) return;
+  try {
+    await api(`/instances/${currentId}/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'say ' + msg }),
+    });
+    $('chatSay').value = '';
+    setTimeout(loadChat, 500);
+  } catch (e) { toast(e.message); }
+}
+
+/* ===== 玩家管理 ===== */
+let playersId = null;
+function openPlayers(id) { openConsole(id, 'players'); }
+
+async function loadPlayers() {
+  playersId = currentId;
+  $('playersErr').textContent = '';
+  try {
+    const d = await api(`/instances/${playersId}/players`);
+    const it = instances.find(i => i.id === playersId);
+    const online = (it && it.playerList) || [];
+    const running = it && it.status === 'running';
+    const head = n => `<img src="https://mc-heads.net/avatar/${encodeURIComponent(n)}/24" width="24" height="24"
+      style="border-radius:6px;image-rendering:pixelated;flex:none" onerror="this.style.display='none'">`;
+    const sec = (title, names, actions, withHead) => `
+      <div class="section-title" style="margin:14px 0 8px">${title}${names.length ? `（${names.length}）` : ''}</div>
+      ${names.length ? names.map(n => `
+        <div class="bk-row" style="padding:8px 12px">
+          ${withHead ? head(n) : ''}
+          <div class="fname">${esc(n)}</div>
+          <div class="sp">${actions.map(a => `<button class="qbtn ghost sm" ${a.color ? `style="color:${a.color}"` : ''} onclick='playerAct(${JSON.stringify(a.act)}, ${JSON.stringify(n)})'>${a.label}</button>`).join('')}</div>
+        </div>`).join('') : '<div class="empty-hint" style="padding:8px">暂无</div>'}`;
+    const onlineActions = running ? [
+      {act:'gm-creative',label:'创造'},
+      {act:'gm-survival',label:'生存'},
+      {act:'heal',label:'回血喂饱'},
+      {act:'spawn',label:'传送出生点'},
+      {act:'op',label:'OP'},
+      {act:'kick',label:'踢出',color:'#ffb35c'},
+      {act:'ban',label:'封禁',color:'#ff5c8a'},
+    ] : [];
+    $('playersLists').innerHTML =
+      sec('在线玩家', online, onlineActions, true) +
+      sec('白名单' + (d.whitelistOn ? '' : '（未启用，在「服务器配置」里打开）'), d.whitelist, [{act:'whitelist-remove',label:'移出'}]) +
+      sec('OP 管理员', d.ops, [{act:'deop',label:'取消 OP'}]) +
+      sec('封禁名单', d.bans, [{act:'pardon',label:'解封'}]);
+  } catch (e) {
+    $('playersLists').innerHTML = `<div class="empty-hint">${esc(e.message)}</div>`;
+  }
+}
+
+// 在线玩家快捷操作 → 控制台指令
+const playerCmds = {
+  'gm-creative': n => `gamemode creative ${n}`,
+  'gm-survival': n => `gamemode survival ${n}`,
+  'heal':        n => `effect give ${n} minecraft:instant_health 1 10`,
+  'spawn':       n => `execute in minecraft:overworld run tp ${n} 0 200 0`,
+};
+
+async function playerAct(action, name) {
+  name = name || $('plName').value.trim();
+  if (!name) { $('playersErr').textContent = '请输入玩家名'; return; }
+  $('playersErr').textContent = '';
+  try {
+    if (playerCmds[action]) {
+      // 快捷操作走控制台指令
+      await api(`/instances/${playersId}/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: playerCmds[action](name) }),
+      });
+    } else {
+      await api(`/instances/${playersId}/players`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, name }),
+      });
+    }
+    toast('已执行');
+    $('plName').value = '';
+    setTimeout(() => { loadAll().then(loadPlayers); }, 600);
+  } catch (e) { $('playersErr').textContent = e.message; }
+}
+
+/* ===== 日志查看 ===== */
+async function openLogs() {
+  if (!currentId) return;
+  const it = instances.find(i => i.id === currentId);
+  $('logsTitle').textContent = (it ? it.name : '') + ' · 历史日志';
+  $('logsOverlay').classList.add('show');
+  $('logsOut').textContent = '加载日志列表…';
+  try {
+    const logs = await api(`/instances/${currentId}/logs`);
+    if (!logs.length) { $('logsOut').textContent = '暂无日志文件'; return; }
+    $('logsSel').innerHTML = logs.map(l => `<option value="${esc(l.name)}">${esc(l.name)}（${fmtBytes(l.size)}）</option>`).join('');
+    $('logsSel').dataset.inst = currentId;
+    loadLogFile();
+  } catch (e) { $('logsOut').textContent = '加载失败：' + e.message; }
+}
+
+async function loadLogFile() {
+  const file = $('logsSel').value;
+  const inst = $('logsSel').dataset.inst;
+  if (!file || !inst) return;
+  $('logsOut').textContent = '加载中…';
+  try {
+    const r = await fetch(`/api/instances/${inst}/logs/${encodeURIComponent(file)}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    $('logsOut').textContent = await r.text() || '（空文件）';
+    $('logsOut').scrollTop = $('logsOut').scrollHeight;
+  } catch (e) { $('logsOut').textContent = '加载失败：' + e.message; }
+}
+
+async function searchLogs() {
+  const q = $('logsQ').value.trim();
+  const inst = $('logsSel').dataset.inst;
+  if (!q || !inst) return;
+  $('logsOut').textContent = '正在搜索全部日志（含压缩的历史日志）…';
+  try {
+    const d = await api(`/instances/${inst}/logs/search?q=${encodeURIComponent(q)}`);
+    if (!d.hits.length) { $('logsOut').textContent = `在 ${d.files} 个日志文件里没找到「${q}」`; return; }
+    let lastFile = '';
+    $('logsOut').textContent = d.hits.map(h => {
+      const head = h.file !== lastFile ? `\n===== ${h.file} =====\n` : '';
+      lastFile = h.file;
+      return `${head}[${h.line}] ${h.text}`;
+    }).join('\n').trim() + (d.truncated ? `\n\n（结果超过 500 条已截断，换更具体的关键词）` : '');
+    $('logsOut').scrollTop = 0;
+  } catch (e) { $('logsOut').textContent = '搜索失败：' + e.message; }
+}
+
+/* ===== 服务器设置（server.properties） ===== */
+let propsId = null;
+function openProps(id) { openConsole(id, 'props'); }
+
+/* ===== Java 运行环境设置 ===== */
+async function fixJava(id, major, btn) {
+  if (!confirm(`将自动下载安装 Java ${major}（约 50MB，仅需一次）并重启服务器，继续吗？`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = '安装中…'; }
+  try {
+    await api(`/instances/${id}/fixjava`, { method: 'POST' });
+    toast(`正在安装 Java ${major}，完成后自动重启，可在控制台查看进度`);
+    loadAll();
+  } catch (e) {
+    toast('操作失败：' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = `自动安装 Java ${major} 并重启`; }
+  }
+}
+
+async function loadJavaInfo(id) {
+  $('javaErr').textContent = '';
+  try {
+    const d = await api(`/instances/${id}/java`);
+    if (d.mode === 'generic') { $('javaBox').style.display = 'none'; return; }
+    $('javaBox').style.display = '';
+    $('javaPathInput').value = d.custom || '';
+    let txt;
+    if (d.mode === 'custom') {
+      txt = `自定义 Java ${d.effectiveMajor || '?'}：${d.effective}`;
+    } else if (d.effective) {
+      txt = `自动匹配 Java ${d.needMajor}：${d.effective}`;
+    } else {
+      txt = `需要 Java ${d.needMajor}，首次启动时自动下载安装`;
+    }
+    $('javaInfo').textContent = txt;
+  } catch (e) { $('javaInfo').textContent = e.message; }
+}
+
+function toggleJavaEdit() {
+  const row = $('javaEditRow');
+  row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
+async function saveJavaPath(btn) {
+  const p = $('javaPathInput').value.trim();
+  if (!p) { $('javaErr').textContent = '路径为空，若想恢复自动请点「恢复自动匹配」'; return; }
+  btn.disabled = true;
+  try {
+    await api(`/instances/${propsId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ javaPath: p }),
+    });
+    toast('Java 路径已保存，重启服务器生效');
+    loadJavaInfo(propsId);
+  } catch (e) { $('javaErr').textContent = e.message; }
+  btn.disabled = false;
+}
+
+async function clearJavaPath(btn) {
+  btn.disabled = true;
+  try {
+    await api(`/instances/${propsId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ javaPath: '' }),
+    });
+    toast('已恢复自动匹配');
+    $('javaPathInput').value = '';
+    loadJavaInfo(propsId);
+  } catch (e) { $('javaErr').textContent = e.message; }
+  btn.disabled = false;
+}
+
+async function loadPropsForm(id) {
+  propsId = id;
+  const it = instances.find(i => i.id === id);
+  $('propsErr').textContent = '';
+  $('propsForm').innerHTML = '<div class="empty-hint">加载中…</div>';
+  checkCoreUpdate(id);
+  loadTimedCmds(id);
+  refreshIconPreview(id);
+  loadJavaInfo(id);
+  if (it && it.type === 'generic') {
+    $('coreUpdateBox').style.display = 'none';
+    $('worldBox').style.display = 'none';
+    $('propsForm').innerHTML = `
+      <label>世界名称（改名）</label><input data-meta="name" value="${esc(it.name)}" maxlength="30">
+      <label>运行根目录（留空 = 面板实例目录；填游戏安装的完整路径）</label>
+      <input data-gen="workDir" value="${esc(it.workDir || '')}" placeholder="例如：D:\Games\PalServer">
+      <label>启动命令（在根目录下执行）</label>
+      <input data-gen="execCmd" value="${esc(it.execCmd || '')}" placeholder="例如：PalServer.exe -port=8211">
+      <label>停止指令（留空 = 停止时直接结束进程）</label>
+      <input data-gen="stopCmd" value="${esc(it.stopCmd || '')}">
+      ${it.steamAppId ? `<p style="color:#6e6a8e;font-size:12px;margin-top:6px">SteamCMD AppID: ${it.steamAppId}（重新安装/更新可删除实例后重建）</p>` : ''}`;
+    return;
+  }
+  try {
+    const d = await api(`/instances/${id}/props`);
+    $('worldBox').style.display = '';
+    $('worldDims').style.display = 'none';
+    $('worldResetBox').style.display = 'none';
+    $('worldErr').textContent = '';
+    const props = d.props || {};
+    let html = `<label>世界名称（改名）</label><input data-meta="name" value="${esc(it ? it.name : '')}" maxlength="30">
+      <label>最大内存 (MB)（重启生效）</label><input data-meta="memoryMB" type="number" min="512" step="512" value="${it ? it.memoryMB : 2048}">
+      <div class="switch-row" style="margin:12px 0">
+        <input type="checkbox" data-meta="autoRestart" id="pk-autorestart" style="width:auto" ${it && it.autoRestart ? 'checked' : ''}>
+        <label for="pk-autorestart" style="margin:0">崩溃自动重启（10 分钟内崩 3 次以上会暂停并邮件提醒）</label></div>
+      <div class="switch-row" style="margin:12px 0">
+        <input type="checkbox" data-meta="autoSleep" id="pk-autosleep" style="width:auto" ${it && it.autoSleep ? 'checked' : ''}>
+        <label for="pk-autosleep" style="margin:0">空服自动待机（10 分钟没人自动停服省内存，玩家点击进入自动唤醒）</label></div>
+      <div class="switch-row" style="margin:12px 0">
+        <input type="checkbox" data-meta="autoStart" id="pk-autostart" style="width:auto" ${it && it.autoStart ? 'checked' : ''}>
+        <label for="pk-autostart" style="margin:0">随面板自动启动（配合设置页的「开机自启」，电脑开机即自动开服）</label></div>
+      <div class="section-title" style="margin:16px 0 4px">server.properties</div>`;
+    for (const mt of d.meta) {
+      const v = props[mt.key] !== undefined ? props[mt.key] : '';
+      if (mt.key === 'motd') {
+        html += motdEditorHTML(v);
+      } else if (mt.kind === 'bool') {
+        html += `<div class="switch-row" style="margin:10px 0">
+          <input type="checkbox" data-pk="${mt.key}" id="pk-${mt.key}" style="width:auto" ${v === 'true' ? 'checked' : ''}>
+          <label for="pk-${mt.key}" style="margin:0">${mt.label}</label></div>`;
+      } else if (mt.kind === 'select') {
+        html += `<label>${mt.label}</label><select data-pk="${mt.key}">` +
+          mt.opts.split(',').map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('') + '</select>';
+      } else {
+        html += `<label>${mt.label}</label><input data-pk="${mt.key}" type="${mt.kind === 'int' ? 'number' : 'text'}" value="${esc(v)}">`;
+      }
+    }
+    $('propsForm').innerHTML = html;
+    if (document.querySelector('[data-pk="motd"]')) updateMotdPreview();
+  } catch (e) {
+    $('propsForm').innerHTML = `<div class="empty-hint">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+/* ===== MOTD 可视化编辑器 ===== */
+const MC_COLORS = {
+  '0':'#000000','1':'#0000AA','2':'#00AA00','3':'#00AAAA','4':'#AA0000','5':'#AA00AA',
+  '6':'#FFAA00','7':'#AAAAAA','8':'#555555','9':'#5555FF','a':'#55FF55','b':'#55FFFF',
+  'c':'#FF5555','d':'#FF55FF','e':'#FFFF55','f':'#FFFFFF',
+};
+
+function motdEditorHTML(v) {
+  const swatches = Object.entries(MC_COLORS).map(([c, hex]) =>
+    `<span onclick="insertMotdCode('${c}')" title="§${c}" style="display:inline-block;width:18px;height:18px;border-radius:4px;background:${hex};cursor:pointer;border:1px solid rgba(255,255,255,.25)"></span>`).join('');
+  const styles = [['l','粗体'],['o','斜体'],['n','下划线'],['m','删除线'],['k','乱码'],['r','重置']]
+    .map(([c, t]) => `<button type="button" class="qbtn ghost sm" onclick="insertMotdCode('${c}')">${t}</button>`).join('');
+  return `<label>服务器介绍（MOTD）</label>
+    <input data-pk="motd" value="${esc(v)}" oninput="updateMotdPreview()">
+    <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:8px 0">${swatches}<span style="width:8px"></span>${styles}</div>
+    <div style="background:#2c2c2c;border-radius:8px;padding:8px 10px;display:flex;gap:10px;align-items:center;margin-bottom:6px">
+      <img id="motdIcon" width="40" height="40" style="image-rendering:pixelated;border-radius:4px" alt="">
+      <div style="min-width:0">
+        <div style="color:#fff;font-size:13px;font-family:monospace" id="motdSrvName"></div>
+        <div id="motdPreview" style="font-size:13px;font-family:monospace;color:#AAAAAA;white-space:pre-wrap;word-break:break-all"></div>
+      </div>
+      <span style="margin-left:auto;color:#55FF55;font-size:12px;font-family:monospace">0/20</span>
+    </div>`;
+}
+
+function insertMotdCode(code) {
+  const inp = document.querySelector('[data-pk="motd"]');
+  if (!inp) return;
+  const pos = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
+  inp.value = inp.value.slice(0, pos) + '§' + code + inp.value.slice(inp.selectionEnd == null ? pos : inp.selectionEnd);
+  inp.focus();
+  inp.selectionStart = inp.selectionEnd = pos + 2;
+  updateMotdPreview();
+}
+
+function updateMotdPreview() {
+  const inp = document.querySelector('[data-pk="motd"]');
+  const out = $('motdPreview');
+  if (!inp || !out) return;
+  const it = instances.find(i => i.id === propsId);
+  $('motdSrvName').textContent = it ? it.name : 'Minecraft Server';
+  const icon = $('motdIcon');
+  icon.onerror = () => { icon.style.visibility = 'hidden'; };
+  icon.src = `/api/instances/${propsId}/icon?t=${Date.now()}`;
+  // 渲染 § 颜色码（\n 支持 properties 的 § 已由输入直接给出）
+  let htmlOut = '', color = '#AAAAAA', bold = false, italic = false, underline = false, strike = false;
+  const flush = ch => {
+    let st = `color:${color}`;
+    if (bold) st += ';font-weight:bold';
+    if (italic) st += ';font-style:italic';
+    const dec = [underline ? 'underline' : '', strike ? 'line-through' : ''].filter(Boolean).join(' ');
+    if (dec) st += `;text-decoration:${dec}`;
+    htmlOut += `<span style="${st}">${esc(ch)}</span>`;
+  };
+  const s = inp.value.replace(/\\n/g, '\n');
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '§' && i + 1 < s.length) {
+      const c = s[i + 1].toLowerCase();
+      i++;
+      if (MC_COLORS[c]) { color = MC_COLORS[c]; bold = italic = underline = strike = false; }
+      else if (c === 'l') bold = true;
+      else if (c === 'o') italic = true;
+      else if (c === 'n') underline = true;
+      else if (c === 'm') strike = true;
+      else if (c === 'r') { color = '#AAAAAA'; bold = italic = underline = strike = false; }
+      continue;
+    }
+    flush(s[i]);
+  }
+  out.innerHTML = htmlOut || '<span style="color:#555">（空 MOTD）</span>';
+}
+
+async function saveProps() {
+  const body = {};
+  $('propsForm').querySelectorAll('[data-pk]').forEach(el => {
+    body[el.dataset.pk] = el.type === 'checkbox' ? String(el.checked) : el.value;
+  });
+  const meta = {};
+  $('propsForm').querySelectorAll('[data-meta]').forEach(el => {
+    meta[el.dataset.meta] = el.type === 'checkbox' ? el.checked
+      : el.dataset.meta === 'memoryMB' ? (+el.value || 0) : el.value;
+  });
+  $('propsBtn').disabled = true;
+  try {
+    if (meta.name !== undefined || meta.memoryMB) {
+      await api(`/instances/${propsId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(meta),
+      });
+    }
+    const gen = {};
+    $('propsForm').querySelectorAll('[data-gen]').forEach(el => { gen[el.dataset.gen] = el.value; });
+    if (Object.keys(gen).length) {
+      await api(`/instances/${propsId}/generic`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(gen),
+      });
+      toast('设置已保存');
+      loadAll();
+      return;
+    }
+    await api(`/instances/${propsId}/props`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    toast('设置已保存，重启服务器生效');
+    loadAll();
+  } catch (e) {
+    $('propsErr').textContent = e.message;
+  } finally {
+    $('propsBtn').disabled = false;
+  }
+}
+
+/* ===== Paper 核心更新 ===== */
+async function checkCoreUpdate(id) {
+  const it = instances.find(i => i.id === id);
+  const box = $('coreUpdateBox');
+  if (!it || it.type !== 'paper') { box.style.display = 'none'; return; }
+  box.style.display = '';
+  $('coreUpdateBtn').style.display = 'none';
+  $('upgradeRow').style.display = 'none';
+  $('coreUpdateInfo').textContent = '检查核心更新中…';
+  try {
+    const d = await api(`/instances/${id}/core/check`);
+    if (d.hasUpdate) {
+      $('coreUpdateInfo').innerHTML = `Paper ${esc(d.version)} 有新构建：<b style="color:#6affb0">build ${d.latestBuild}</b>（当前 ${d.currentBuild}）`;
+      $('coreUpdateBtn').style.display = '';
+    } else {
+      $('coreUpdateInfo').textContent = `Paper ${d.version} build ${d.currentBuild} 已是最新`;
+    }
+  } catch (e) {
+    $('coreUpdateInfo').textContent = '核心更新检查失败：' + e.message;
+  }
+  try {
+    const u = await api(`/instances/${id}/upgrade/versions`);
+    if (u.newer && u.newer.length) {
+      $('upgradeSel').innerHTML = '<option value="">选择新版本</option>' +
+        u.newer.map(v => `<option value="${v}">Minecraft ${v}</option>`).join('');
+      $('upgradeRow').style.display = '';
+    }
+  } catch (e) {}
+}
+
+async function doUpgrade(btn) {
+  const ver = $('upgradeSel').value;
+  if (!ver) { toast('先选择要升级到的版本'); return; }
+  const it = instances.find(i => i.id === propsId);
+  if (it && (it.status === 'running' || it.status === 'starting')) { toast('请先停止服务器'); return; }
+  if (!confirm(`把「${it ? it.name : ''}」从 ${it ? it.version : ''} 升级到 ${ver}？\n会先自动备份。升级后世界自动升格，无法降回旧版本！`)) return;
+  btn.disabled = true;
+  try {
+    await api(`/instances/${propsId}/upgrade`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version: ver, backup: true }),
+    });
+    toast('升级开始，进度见控制台');
+    setConsoleTab('console');
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; }
+}
+
+async function doCoreUpdate(btn) {
+  const it = instances.find(i => i.id === propsId);
+  if (it && (it.status === 'running' || it.status === 'starting')) {
+    $('propsErr').textContent = '请先停止服务器再更新核心';
+    return;
+  }
+  btn.disabled = true;
+  try {
+    await api(`/instances/${propsId}/core/update`, { method: 'POST' });
+    toast('核心更新中，进度见控制台');
+    setConsoleTab('console');
+  } catch (e) { $('propsErr').textContent = e.message; }
+  finally { btn.disabled = false; }
+}
+
+/* ===== 性能体检 ===== */
+let _optSuggest = [];
+async function optCheck(btn) {
+  const box = $('optList');
+  box.style.display = '';
+  box.innerHTML = '<div class="empty-hint">正在体检…</div>';
+  $('optErr').textContent = '';
+  btn.disabled = true;
+  try {
+    const d = await api(`/instances/${propsId}/optimize`);
+    _optSuggest = (d.suggestions || []).filter(s => s.status === 'suggest');
+    if (!d.suggestions.length) {
+      box.innerHTML = '<div class="empty-hint">没有可检查的项目</div>';
+      return;
+    }
+    box.innerHTML = d.suggestions.map(s => `
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+        <b style="color:${s.status === 'good' ? '#6affb0' : '#ffb35c'};min-width:36px;font-size:12px">${s.status === 'good' ? '良好' : '建议'}</b>
+        <div style="flex:1">
+          <b style="font-size:12px;color:#c8c4e0">${esc(s.label)}</b>
+          <span style="font-size:12px;color:#9a96b8">当前 ${esc(s.current)}${s.status === 'suggest' ? ' → 建议 ' + esc(s.advice) : ''}</span>
+          ${s.reason ? `<div style="color:#6e6a8e;font-size:12px;line-height:1.5">${esc(s.reason)}</div>` : ''}
+        </div>
+      </div>`).join('');
+    $('optApplyRow').style.display = _optSuggest.length ? '' : 'none';
+    if (!_optSuggest.length) box.innerHTML += '<div style="color:#6affb0;font-size:12px;padding:8px 0">已是推荐配置，无需调整</div>';
+  } catch (e) {
+    box.innerHTML = `<div class="empty-hint">${esc(e.message)}</div>`;
+  } finally { btn.disabled = false; }
+}
+
+async function optApply(btn) {
+  if (!_optSuggest.length) return;
+  btn.disabled = true;
+  try {
+    const d = await api(`/instances/${propsId}/optimize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: _optSuggest }),
+    });
+    toast(`已应用 ${d.applied} 项优化，重启服务器生效`);
+    optCheck($('optBox').querySelector('button'));
+    $('optApplyRow').style.display = 'none';
+  } catch (e) { $('optErr').textContent = e.message; }
+  finally { btn.disabled = false; }
+}
+
+/* ===== 公开状态页 ===== */
+let _spEnabled = false, _spSlug = '';
+async function loadStatusPage(id) {
+  try {
+    const d = await api(`/instances/${id}/statuspage`);
+    _spEnabled = !!d.enabled; _spSlug = d.slug || '';
+    spRender();
+  } catch (e) {}
+}
+
+function spRender() {
+  $('spToggleBtn').textContent = _spEnabled ? '关闭' : '开启';
+  $('spCopyBtn').style.display = _spEnabled ? '' : 'none';
+  $('spInfo').innerHTML = _spEnabled
+    ? `公开状态页<b style="color:#6affb0">已开启</b>：<a href="/s/${_spSlug}" target="_blank" style="color:#7aa2ff">预览页面</a>（发链接给朋友，无需面板密码）`
+    : '公开状态页：一个免密码的分享页面，朋友随时看服务器在不在线';
+}
+
+async function spToggle(btn) {
+  btn.disabled = true;
+  try {
+    const d = await api(`/instances/${propsId}/statuspage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !_spEnabled }),
+    });
+    _spEnabled = !!d.enabled; _spSlug = d.slug || '';
+    spRender();
+    toast(_spEnabled ? '状态页已开启' : '状态页已关闭，旧链接立即失效');
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; }
+}
+
+function spCopy() {
+  const url = `http://${window._lanIP || location.hostname}:${location.port || 8145}/s/${_spSlug}`;
+  copyAddr(url);
+}
+
+async function uploadWorld(input) {
+  const f = input.files[0];
+  input.value = '';
+  if (!f) return;
+  const it = instances.find(i => i.id === propsId);
+  if (it && (it.status === 'running' || it.status === 'starting')) { toast('请先停止服务器'); return; }
+  const backup = confirm(`把单机存档「${f.name}」导入到「${it ? it.name : ''}」？\n当前世界会被替换！\n\n点「确定」= 先自动备份再导入（推荐）\n点「取消」后再次选择可跳过备份`)
+    ? true
+    : confirm('不备份直接导入？当前世界将被覆盖，无法找回！') ? false : null;
+  if (backup === null) return;
+  $('worldErr').textContent = '';
+  toast('正在上传并导入存档…');
+  try {
+    const fd = new FormData();
+    fd.append('file', f);
+    fd.append('backup', backup ? 'true' : 'false');
+    await api(`/instances/${propsId}/world/upload`, { method: 'POST', body: fd });
+    toast('存档导入完成，启动服务器即可游玩');
+    loadWorld();
+  } catch (e) { $('worldErr').textContent = e.message; toast(e.message); }
+}
+
+/* ===== 世界管理 ===== */
+async function loadWorld() {
+  const dbox = $('worldDims');
+  dbox.style.display = '';
+  dbox.innerHTML = '<div class="empty-hint">正在统计大小…</div>';
+  try {
+    const d = await api(`/instances/${propsId}/world`);
+    if (!d.dims.length) {
+      dbox.innerHTML = '<div class="empty-hint">还没有世界文件（先启动一次生成世界）</div>';
+      return;
+    }
+    dbox.innerHTML = d.dims.map(x =>
+      `<span style="display:inline-block;margin-right:18px">${x.label}：<b style="color:#c8c4e0">${x.found ? fmtBytes(x.size) : '未生成'}</b></span>`
+    ).join('') + (d.seed ? `<span style="color:#6e6a8e">当前种子：${esc(d.seed)}</span>` : '');
+    $('worldResetBox').style.display = '';
+  } catch (e) {
+    dbox.innerHTML = `<div class="empty-hint">${esc(e.message)}</div>`;
+  }
+}
+
+async function worldReset(btn) {
+  const target = $('worldTarget').value;
+  const label = $('worldTarget').selectedOptions[0].text;
+  const backup = $('worldBackup').checked;
+  $('worldErr').textContent = '';
+  if (!confirm(`确定要「${label}」吗？${backup ? '会先自动备份。' : '不备份，删了就没了！'}\n需要服务器处于停止状态。`)) return;
+  if (target === 'all' && !confirm('再次确认：整个世界（含玩家背包、建筑）都会消失，重新生成新世界！')) return;
+  btn.disabled = true; btn.textContent = backup ? '备份并重置中…' : '重置中…';
+  try {
+    await api(`/instances/${propsId}/world/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target, seed: $('worldSeed').value, backup }),
+    });
+    toast('重置完成，下次启动重新生成');
+    loadWorld();
+  } catch (e) { $('worldErr').textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '执行重置'; }
+}
+
+/* ===== 联机诊断 ===== */
+const netDocIcons = { ok: ['#6affb0', 'OK'], warn: ['#ffb35c', '注意'], fail: ['#ff5c8a', '问题'], info: ['#7aa2ff', '提示'] };
+async function netDoctor(btn) {
+  const box = $('netDocList');
+  box.style.display = '';
+  box.innerHTML = '<div class="empty-hint">正在逐项检查…</div>';
+  btn.disabled = true;
+  try {
+    const d = await api(`/instances/${propsId}/netdoctor`);
+    box.innerHTML = d.checks.map(c => {
+      const [color, tag] = netDocIcons[c.status] || netDocIcons.info;
+      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+        <b style="color:${color};min-width:36px;font-size:12px">${tag}</b>
+        <div style="flex:1"><b style="font-size:12px;color:#c8c4e0">${esc(c.name)}</b>
+          <div style="color:#9a96b8;font-size:12px;line-height:1.5">${esc(c.detail)}</div></div>
+        ${c.fix ? `<button class="qbtn ghost sm" style="color:#6affb0" onclick='netFix("${c.fix}", this)'>一键修复</button>` : ''}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = `<div class="empty-hint">诊断失败：${esc(e.message)}</div>`;
+  } finally { btn.disabled = false; }
+}
+
+async function netFix(fix, btn) {
+  btn.disabled = true;
+  try {
+    const d = await api(`/instances/${propsId}/netfix?fix=${encodeURIComponent(fix)}`, { method: 'POST' });
+    toast(d.message);
+    btn.textContent = '已修复';
+  } catch (e) { toast(e.message); btn.disabled = false; }
+}
+
+/* ===== 公网联机（UPnP） ===== */
+async function upnpMap(btn) {
+  btn.disabled = true;
+  $('upnpInfo').textContent = '正在和路由器沟通…（最多 10 秒）';
+  try {
+    const d = await api(`/instances/${propsId}/upnp`, { method: 'POST' });
+    const addr = d.externalIP ? `${d.externalIP}:${d.port}` : `公网IP:${d.port}`;
+    $('upnpInfo').innerHTML = `公网映射<b style="color:#6affb0">已开启</b>：朋友用 <b style="cursor:pointer" onclick="copyAddr('${addr}')" title="点击复制">${addr}</b> 直连` +
+      (d.bedrock ? '（基岩版 UDP 19132 也已映射）' : '');
+    toast('公网映射成功');
+    loadAddresses();
+  } catch (e) {
+    $('upnpInfo').textContent = '映射失败：' + e.message;
+  } finally { btn.disabled = false; }
+}
+
+async function upnpUnmap(btn) {
+  btn.disabled = true;
+  try {
+    await api(`/instances/${propsId}/upnp`, { method: 'DELETE' });
+    $('upnpInfo').textContent = '公网映射已关闭';
+    toast('已关闭公网映射');
+    loadAddresses();
+  } catch (e) { $('upnpInfo').textContent = '' + e.message; }
+  finally { btn.disabled = false; }
+}
+
+/* ===== 内网穿透（frp） ===== */
+let frpMode = 'custom', frpRunning = false;
+async function loadFrp(id) {
+  $('frpErr').textContent = '';
+  $('frpForm').style.display = 'none';
+  $('frpTomlBox').style.display = 'none';
+  try {
+    const d = await api(`/instances/${id}/frp`);
+    const c = d.config || {};
+    frpSetMode(c.mode === 'sakura' ? 'sakura' : 'custom');
+    $('frpAddr').value = c.serverAddr || '';
+    $('frpPort').value = c.serverPort || 7000;
+    $('frpRemote').value = c.remotePort || '';
+    $('frpTalkPort').value = c.talkPort || '';
+    $('frpToken').value = '';
+    $('frpToken').placeholder = c.token ? '已保存，不修改则留空' : '没有则留空';
+    $('frpUdp').checked = !!c.udp;
+    $('frpSakuraExe').value = c.sakuraExe || '';
+    $('frpSakuraArg').value = c.sakuraArg || '';
+    $('frpSakuraToken').value = '';
+    $('frpSakuraToken').placeholder = c.sakuraToken ? '已保存，不修改则留空' : '樱花访问密钥';
+    if (c.sakuraTunnel) {
+      $('frpSakuraTunnel').innerHTML = `<option value="${c.sakuraTunnel}" selected>${esc(c.sakuraName || ('隧道 #' + c.sakuraTunnel))}</option>`;
+    } else {
+      $('frpSakuraTunnel').innerHTML = '<option value="">先点「查询隧道」</option>';
+    }
+    $('frpAuto').checked = !!c.autoStart;
+    frpRenderStatus(d);
+  } catch (e) { $('frpInfo').textContent = '穿透状态加载失败：' + e.message; }
+}
+
+function frpRenderStatus(d) {
+  frpRunning = d.status === 'running';
+  const btn = $('frpToggleBtn');
+  btn.textContent = frpRunning ? '关闭穿透' : '开启穿透';
+  if (frpRunning) {
+    $('frpInfo').innerHTML = d.addr
+      ? `内网穿透<b style="color:#6affb0">已连通</b>：朋友用 <b style="cursor:pointer" onclick="copyAddr('${d.addr}')" title="点击复制">${d.addr}</b> 直连`
+      : '内网穿透<b style="color:#6affb0">运行中</b>（连接地址见控制台 [frp] 日志）';
+  } else if (d.status === 'error') {
+    $('frpInfo').textContent = '穿透出错：' + (d.error || '详见控制台 [frp] 日志');
+  } else {
+    $('frpInfo').textContent = '内网穿透：路由器不支持 UPnP 时，借助 frp 服务器让朋友直连';
+  }
+}
+
+async function frpToggle(btn) {
+  btn.disabled = true;
+  $('frpErr').textContent = '';
+  try {
+    await api(`/instances/${propsId}/frp/${frpRunning ? 'stop' : 'start'}`, { method: 'POST' });
+    toast(frpRunning ? '已关闭穿透' : '穿透启动中，稍候查看连接地址');
+    setTimeout(() => { loadFrpStatus(propsId); loadAddresses(); }, 2500);
+  } catch (e) {
+    $('frpErr').textContent = e.message;
+    $('frpForm').style.display = '';
+  } finally { btn.disabled = false; }
+}
+
+async function loadFrpStatus(id) {
+  try { frpRenderStatus(await api(`/instances/${id}/frp`)); } catch (e) {}
+}
+
+function frpToggleForm() {
+  const f = $('frpForm');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+}
+
+function frpSetMode(mode) {
+  frpMode = mode;
+  $('frpModeCustom').classList.toggle('main', mode === 'custom');
+  $('frpModeSakura').classList.toggle('main', mode === 'sakura');
+  $('frpCustomBox').style.display = mode === 'custom' ? '' : 'none';
+  $('frpSakuraBox').style.display = mode === 'sakura' ? '' : 'none';
+}
+
+async function frpSave() {
+  $('frpErr').textContent = '';
+  try {
+    await api(`/instances/${propsId}/frp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode: frpMode,
+        serverAddr: $('frpAddr').value.trim(),
+        serverPort: +$('frpPort').value || 7000,
+        remotePort: +$('frpRemote').value || 0,
+        talkPort: +$('frpTalkPort').value || 0,
+        token: $('frpToken').value,
+        udp: $('frpUdp').checked,
+        sakuraExe: $('frpSakuraExe').value.trim(),
+        sakuraArg: $('frpSakuraArg').value.trim(),
+        sakuraToken: $('frpSakuraToken').value,
+        sakuraTunnel: +$('frpSakuraTunnel').value || 0,
+        sakuraName: $('frpSakuraTunnel').selectedOptions[0] ? $('frpSakuraTunnel').selectedOptions[0].text : '',
+        autoStart: $('frpAuto').checked,
+      }),
+    });
+    toast('穿透设置已保存');
+  } catch (e) { $('frpErr').textContent = e.message; }
+}
+
+async function sakuraLoadTunnels(btn) {
+  $('frpErr').textContent = '';
+  btn.disabled = true; btn.textContent = '查询中…';
+  try {
+    const tok = $('frpSakuraToken').value.trim();
+    const d = await api(`/frp/sakura/tunnels?inst=${propsId}&token=${encodeURIComponent(tok)}`);
+    const list = d.tunnels || [];
+    if (!list.length) {
+      $('frpErr').textContent = '没有隧道——先去樱花官网创建一条 TCP 隧道（本地端口填服务器端口）';
+    } else {
+      $('frpSakuraTunnel').innerHTML = list.map(t => {
+        const id = t.id || t.tunnel_id || 0;
+        const name = t.name || ('隧道 #' + id);
+        const node = t.node_name || t.node || '';
+        const lp = t.local_port || t.localPort || '';
+        return `<option value="${id}">${esc(name)}${node ? ' · ' + esc(node) : ''}${lp ? ' · 本地 ' + lp : ''}</option>`;
+      }).join('');
+      toast(`查到 ${list.length} 条隧道，选一条并保存`);
+    }
+  } catch (e) { $('frpErr').textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = '查询隧道'; }
+}
+
+async function frpOpenToml() {
+  $('frpErr').textContent = '';
+  try {
+    const d = await api(`/instances/${propsId}/frp/toml`);
+    $('frpTomlArea').value = d.content;
+    $('frpTomlBox').style.display = '';
+  } catch (e) { $('frpErr').textContent = e.message; }
+}
+
+async function frpSaveToml() {
+  try {
+    await api(`/instances/${propsId}/frp/toml`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: $('frpTomlArea').value }),
+    });
+    toast('配置源码已保存，重启穿透生效');
+  } catch (e) { $('frpErr').textContent = e.message; }
+}
+
+/* ===== 基岩版互通 ===== */
+async function checkGeyser(id) {
+  const box = $('geyserBox');
+  try {
+    const d = await api(`/instances/${id}/geyser`);
+    if (!d.supported) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    if (d.installed) {
+      $('geyserInfo').innerHTML = '基岩版互通<b style="color:#6affb0">已开启</b>：手机版用「电脑IP + UDP 端口 19132」进服';
+      $('geyserBtn').textContent = '关闭基岩互通';
+      $('geyserBtn').onclick = function() { removeGeyser(this); };
+    } else {
+      $('geyserInfo').textContent = '基岩版互通：让手机/主机版玩家也能进这个服';
+      $('geyserBtn').textContent = '开启基岩互通';
+      $('geyserBtn').onclick = function() { installGeyser(this); };
+    }
+    $('geyserBtn').style.display = '';
+    $('geyserBtn').disabled = false;
+  } catch (e) { box.style.display = 'none'; }
+}
+
+async function installGeyser(btn) {
+  if (!confirm('提示：基岩互通主要适合原版/插件服。\n如果这个服装了大量模组（Fabric/Forge 内容模组），基岩版玩家大概率无法正常游玩（新方块/物品不兼容）。\n\n确定开启吗？')) return;
+  btn.disabled = true;
+  try {
+    await api(`/instances/${propsId}/geyser`, { method: 'POST' });
+    toast('正在安装 Geyser + Floodgate，进度见控制台');
+    setConsoleTab('console');
+  } catch (e) { $('propsErr').textContent = e.message; btn.disabled = false; }
+}
+
+async function removeGeyser(btn) {
+  if (!confirm('关闭基岩互通？会删除 Geyser 和 Floodgate 插件（重启生效），基岩版玩家将无法进服。')) return;
+  btn.disabled = true;
+  try {
+    await api(`/instances/${propsId}/geyser`, { method: 'DELETE' });
+    toast('基岩互通已关闭，重启服务器生效');
+    checkGeyser(propsId);
+  } catch (e) { $('propsErr').textContent = e.message; btn.disabled = false; }
+}
+
+/* ===== 服务器图标 ===== */
+function refreshIconPreview(id) {
+  const img = $('iconPreview');
+  img.onerror = () => { img.style.visibility = 'hidden'; };
+  img.onload = () => { img.style.visibility = 'visible'; };
+  img.src = `/api/instances/${id}/icon?t=${Date.now()}`;
+}
+
+function uploadIcon(input) {
+  const f = input.files[0];
+  input.value = '';
+  if (!f) return;
+  const img = new Image();
+  const url = URL.createObjectURL(f);
+  img.onload = async () => {
+    URL.revokeObjectURL(url);
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    const ctx = cv.getContext('2d');
+    // 居中裁剪成正方形再缩放
+    const s = Math.min(img.width, img.height);
+    ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 64, 64);
+    cv.toBlob(async blob => {
+      try {
+        const r = await fetch(`/api/instances/${propsId}/icon`, { method: 'POST', body: blob });
+        if (!r.ok) throw new Error((await r.json()).error || 'HTTP ' + r.status);
+        toast('图标已更新，重启服务器后在游戏列表生效');
+        refreshIconPreview(propsId);
+      } catch (e) { $('propsErr').textContent = e.message; }
+    }, 'image/png');
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); $('propsErr').textContent = '无法读取该图片'; };
+  img.src = url;
+}
+
+/* ===== 定时指令 ===== */
+let tcCmds = [];
+async function loadTimedCmds(id) {
+  try {
+    tcCmds = await api(`/instances/${id}/timedcmds`);
+    renderTimedCmds();
+  } catch (e) { $('tcList').innerHTML = ''; }
+}
+
+function renderTimedCmds() {
+  $('tcList').innerHTML = tcCmds.length ? tcCmds.map((c, i) => `
+    <div class="bk-row" style="padding:6px 12px;${c.enabled ? '' : 'opacity:.5'}">
+      <div style="min-width:0">
+        <div class="fname" style="font-size:13px">${esc(c.command)}</div>
+        <div class="fmeta">每 ${c.intervalMin} 分钟</div>
+      </div>
+      <div class="sp">
+        <button class="qbtn ghost sm" onclick="toggleTimedCmd(${i})">${c.enabled ? '停用' : '启用'}</button>
+        <button class="qbtn ghost sm" style="color:#ff5c8a" onclick="delTimedCmd(${i})">删除</button>
+      </div>
+    </div>`).join('') : '<div class="empty-hint" style="padding:6px 0">暂无定时指令，可以加一条「say 公告」或「save-all」试试</div>';
+}
+
+async function saveTimedCmds() {
+  try {
+    tcCmds = await api(`/instances/${propsId}/timedcmds`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tcCmds),
+    });
+    renderTimedCmds();
+  } catch (e) { $('propsErr').textContent = e.message; }
+}
+
+function addTimedCmd() {
+  const cmd = $('tcCmd').value.trim();
+  const iv = +$('tcInterval').value || 30;
+  if (!cmd) { $('propsErr').textContent = '请输入指令内容'; return; }
+  $('propsErr').textContent = '';
+  tcCmds.push({ intervalMin: iv, command: cmd, enabled: true });
+  $('tcCmd').value = '';
+  saveTimedCmds();
+}
+
+function toggleTimedCmd(i) { tcCmds[i].enabled = !tcCmds[i].enabled; saveTimedCmds(); }
+function delTimedCmd(i) { tcCmds.splice(i, 1); saveTimedCmds(); }
+
+/* ===== 定时重启 ===== */
+async function loadRestart() {
+  try {
+    const c = await api('/restart');
+    $('rsEnabled').checked = !!c.enabled;
+    $('rsTime').value = c.time || '04:00';
+    $('rsWarn').checked = !!c.warn;
+    $('rsBackup').checked = !!c.backup;
+  } catch (e) {}
+}
+
+async function saveRestart() {
+  try {
+    await api('/restart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: $('rsEnabled').checked,
+        time: $('rsTime').value || '04:00',
+        warn: $('rsWarn').checked,
+        backup: $('rsBackup').checked,
+      }),
+    });
+    toast('定时重启配置已保存');
+  } catch (e) { toast(e.message); }
+}
+
+/* ===== 自动备份 ===== */
+async function loadAutoBackup() {
+  try {
+    const c = await api('/autobackup');
+    $('abEnabled').checked = !!c.enabled;
+    $('abInterval').value = c.intervalMin || 60;
+    $('abKeep').value = c.keep || 5;
+    $('abOnlyRunning').checked = !!c.onlyRunning;
+    $('abCloud').checked = !!c.cloudUpload;
+    const per = c.keepPerInst || {};
+    $('abPerInst').innerHTML = instances.length ? `
+      <label style="margin-top:4px">按世界覆盖保留份数（留空 = 用全局值）</label>
+      ${instances.map(i => `
+        <div class="switch-row" style="margin:6px 0">
+          <span style="min-width:120px; font-size:13px">${esc(i.name)}</span>
+          <input type="number" min="1" max="50" style="width:90px" data-abinst="${i.id}"
+                 value="${per[i.id] || ''}" placeholder="全局">
+        </div>`).join('')}` : '';
+  } catch (e) {}
+}
+
+async function saveAutoBackup() {
+  const keepPerInst = {};
+  document.querySelectorAll('[data-abinst]').forEach(el => {
+    const v = parseInt(el.value, 10);
+    if (v >= 1) keepPerInst[el.dataset.abinst] = v;
+  });
+  try {
+    await api('/autobackup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: $('abEnabled').checked,
+        intervalMin: +$('abInterval').value || 60,
+        keep: +$('abKeep').value || 5,
+        onlyRunning: $('abOnlyRunning').checked,
+        cloudUpload: $('abCloud').checked,
+        keepPerInst,
+      }),
+    });
+    toast('自动备份配置已保存');
+    loadAutoBackup();
+  } catch (e) { toast(e.message); }
+}
+
+/* ===== AI 助手 ===== */
+async function loadAI() {
+  try {
+    const c = await api('/ai');
+    $('aiEnabled').checked = !!c.enabled;
+    $('aiBase').value = c.baseURL || '';
+    $('aiModel').value = c.model || '';
+    $('aiKey').value = '';
+    $('aiKey').placeholder = c.apiKey ? '已保存，不修改则留空' : 'sk-...';
+  } catch (e) {}
+}
+
+async function saveAI() {
+  try {
+    await api('/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: $('aiEnabled').checked,
+        baseURL: $('aiBase').value.trim(),
+        apiKey: $('aiKey').value,
+        model: $('aiModel').value.trim(),
+      }),
+    });
+    toast('AI 配置已保存');
+    loadAI();
+  } catch (e) { toast('保存失败：' + e.message); }
+}
+
+async function fetchAIModels(btn) {
+  btn.disabled = true; btn.textContent = '获取中…';
+  try {
+    const r = await api('/ai/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseURL: $('aiBase').value.trim(), apiKey: $('aiKey').value }),
+    });
+    $('aiModelList').innerHTML = r.models.map(m => `<option value="${esc(m)}">`).join('');
+    toast(`已获取 ${r.models.length} 个模型，点击模型输入框选择`);
+    if (!$('aiModel').value && r.models.length) $('aiModel').value = r.models[0];
+    $('aiModel').focus();
+  } catch (e) { toast('获取失败：' + e.message); }
+  btn.disabled = false; btn.textContent = '获取列表';
+}
+
+async function testAI(btn) {
+  btn.disabled = true; btn.textContent = '测试中…';
+  try {
+    const d = await api('/ai/test', { method: 'POST' });
+    toast('AI 回复：' + d.reply);
+  } catch (e) { toast(e.message); }
+  btn.disabled = false; btn.textContent = '测试连接';
+}
+
+async function aiAnalyze(btn, force) {
+  const panel = $('aiPanel');
+  panel.style.display = '';
+  $('aiErr').textContent = '';
+  $('aiCauses').innerHTML = '';
+  $('aiActions').innerHTML = '';
+  $('aiSummary').textContent = 'AI 正在阅读日志分析中…（最多 1 分钟）';
+  btn.disabled = true;
+  try {
+    const d = await api(`/instances/${currentId}/ai/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force: !!force }),
+    });
+    $('aiSummary').innerHTML = '<b style="color:#7aa2ff">AI 分析：</b>' + esc(d.summary || '（无内容）');
+    if (d.causes && d.causes.length)
+      $('aiCauses').innerHTML = '可能原因：' + d.causes.map(esc).join('；');
+    if (d.actions && d.actions.length) {
+      const mods = d.actions.filter(a => a.type === 'disable_mod');
+      let html = d.actions.map((a, i) =>
+        a.type === 'manual'
+          ? `<span style="font-size:12px;color:#9a96b8;width:100%">建议：${esc(a.label)}</span>`
+          : `<button class="qbtn ghost sm" style="border-color:rgba(106,255,176,.4);color:#6affb0" onclick='aiApply(${i}, this)'>${esc(a.label)}</button>`
+      ).join('');
+      if (mods.length > 1)
+        html = `<button class="qbtn ghost sm" style="border-color:rgba(255,179,92,.5);color:#ffb35c" onclick="aiApplyAllMods(this)">一键禁用全部 ${mods.length} 个问题模组</button>` + html;
+      $('aiActions').innerHTML = html;
+      window._aiActions = d.actions;
+    } else {
+      if (!d.causes || !d.causes.length)
+        $('aiCauses').textContent = '没有发现需要处理的问题';
+      $('aiActions').innerHTML =
+        `<button class="qbtn ghost sm" style="border-color:rgba(122,162,255,.4);color:#7aa2ff" onclick="aiAnalyze(this, true)">获取处理建议</button>`;
+    }
+  } catch (e) {
+    $('aiSummary').textContent = '';
+    $('aiErr').textContent = e.message;
+  } finally { btn.disabled = false; }
+}
+
+async function aiApply(idx, btn) {
+  const act = (window._aiActions || [])[idx];
+  if (!act) return;
+  btn.disabled = true;
+  try {
+    const d = await api(`/instances/${currentId}/ai/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(act),
+    });
+    btn.textContent = '已完成';
+    toast(d.message);
+  } catch (e) { toast(e.message); btn.disabled = false; }
+}
+
+async function aiApplyAllMods(btn) {
+  const mods = (window._aiActions || []).filter(a => a.type === 'disable_mod');
+  if (!mods.length) return;
+  btn.disabled = true;
+  let ok = 0, fail = [];
+  for (const act of mods) {
+    btn.textContent = `禁用中 ${ok + fail.length + 1}/${mods.length}…`;
+    try {
+      await api(`/instances/${currentId}/ai/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(act),
+      });
+      ok++;
+    } catch (e) { fail.push(`${act.value}: ${e.message}`); }
+  }
+  btn.textContent = fail.length ? `完成 ${ok} 个，${fail.length} 个失败` : `已禁用全部 ${ok} 个`;
+  toast(fail.length
+    ? `已禁用 ${ok} 个模组，失败 ${fail.length} 个：${fail.join('；')}`
+    : `已禁用全部 ${ok} 个问题模组，重启服务器生效`);
+}
+
+/* ===== 服务器健康 ===== */
+const gradeColors = { good: '#6affb0', warn: '#ffb35c', bad: '#ff5c8a', idle: '#6e6a8e' };
+async function loadHealth() {
+  try {
+    const d = await api(`/instances/${currentId}/health`);
+    let tpsHtml = '';
+    if (d.tps) {
+      const c = t => t >= 19 ? '#6affb0' : t >= 15 ? '#ffb35c' : '#ff5c8a';
+      const f = t => Math.min(t, 20).toFixed(1);
+      tpsHtml = `<span style="margin-left:14px;font-size:12px;font-weight:400" title="每秒游戏刻，20 为满速；1分钟 / 5分钟 / 15分钟平均">TPS
+        <b style="color:${c(d.tps[0])}">${f(d.tps[0])}</b> /
+        <b style="color:${c(d.tps[1])}">${f(d.tps[1])}</b> /
+        <b style="color:${c(d.tps[2])}">${f(d.tps[2])}</b></span>`;
+    }
+    $('healthBadge').innerHTML = `<span style="color:${gradeColors[d.grade] || '#9a96b8'}">● ${esc(d.label)}</span>${tpsHtml}
+      <span style="color:#6e6a8e;font-weight:400;font-size:12px;margin-left:8px">进程 CPU / 内存曲线（15 秒粒度，最近 1 小时）</span>`;
+    drawHealthChart(d.perf || [], d.memMax || 2048);
+    const lags = d.lags || [];
+    $('lagList').innerHTML = lags.length
+      ? `最近 1 小时卡顿 ${lags.length} 次：` + lags.slice(-5).map(e =>
+          `${new Date(e.t).toLocaleTimeString('zh', {hour:'2-digit',minute:'2-digit'})} 落后 ${e.behindMs}ms`).join('；') +
+        (lags.length > 5 ? ' …' : '')
+      : '最近 1 小时没有卡顿记录';
+  } catch (e) {
+    $('healthBadge').textContent = '';
+    $('lagList').textContent = '';
+  }
+}
+
+function drawHealthChart(perf, memMax) {
+  const cv = $('healthChart');
+  const W = cv.clientWidth || 600, H = 110;
+  cv.width = W * devicePixelRatio; cv.height = H * devicePixelRatio;
+  const ctx = cv.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.clearRect(0, 0, W, H);
+  if (!perf.length) {
+    ctx.fillStyle = '#6e6a8e'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('服务器运行时开始记录', W / 2, H / 2);
+    return;
+  }
+  const now = Date.now(), from = now - 3600e3;
+  const pts = perf.map(p => ({ t: new Date(p.t).getTime(), cpu: p.cpu, mem: p.mem })).filter(p => p.t >= from);
+  if (!pts.length) { return; }
+  const px = t => 6 + (t - from) / (now - from) * (W - 12);
+  const pyC = v => H - 14 - Math.min(v, 100) / 100 * (H - 28);
+  const pyM = v => H - 14 - Math.min(v / memMax, 1) * (H - 28);
+  // CPU 橙
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(px(p.t), pyC(p.cpu)) : ctx.moveTo(px(p.t), pyC(p.cpu)));
+  ctx.strokeStyle = '#ffb35c'; ctx.lineWidth = 1.5; ctx.stroke();
+  // 内存 蓝
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(px(p.t), pyM(p.mem)) : ctx.moveTo(px(p.t), pyM(p.mem)));
+  ctx.strokeStyle = '#7aa2ff'; ctx.lineWidth = 1.5; ctx.stroke();
+  // 图例
+  ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#ffb35c'; ctx.fillText('CPU %', 10, 14);
+  ctx.fillStyle = '#7aa2ff'; ctx.fillText(`内存 (上限 ${memMax}MB)`, 60, 14);
+}
+
+/* ===== 玩家统计 ===== */
+let _statsData = null, _statsHours = 24;
+async function loadPlayerStats() {
+  $('statsRank').innerHTML = '<div class="empty-hint">加载中…</div>';
+  try {
+    _statsData = await api(`/instances/${currentId}/stats`);
+    renderStats(_statsHours);
+    renderRank();
+  } catch (e) {
+    $('statsRank').innerHTML = `<div class="empty-hint">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+function fmtMin(min) {
+  if (min < 60) return min + ' 分钟';
+  const h = Math.floor(min / 60), m2 = min % 60;
+  return h + ' 小时' + (m2 ? ' ' + m2 + ' 分' : '');
+}
+
+function renderStats(hours) {
+  _statsHours = hours;
+  $('statsRange24').classList.toggle('main', hours === 24);
+  $('statsRange168').classList.toggle('main', hours === 168);
+  const cv = $('statsChart');
+  const W = cv.clientWidth || 600, H = 140;
+  cv.width = W * devicePixelRatio; cv.height = H * devicePixelRatio;
+  const ctx = cv.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.clearRect(0, 0, W, H);
+
+  const now = Date.now(), from = now - hours * 3600e3;
+  const pts = (_statsData && _statsData.samples || [])
+    .map(s => ({ t: new Date(s.t).getTime(), n: s.n }))
+    .filter(p => p.t >= from);
+  if (!pts.length) {
+    ctx.fillStyle = '#6e6a8e'; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('暂无数据 — 服务器运行且有玩家后每分钟记录一次', W / 2, H / 2);
+    return;
+  }
+  const maxN = Math.max(2, ...pts.map(p => p.n));
+  const px = t => 8 + (t - from) / (now - from) * (W - 16);
+  const py = n => H - 18 - n / maxN * (H - 36);
+
+  // 网格 + Y 轴刻度
+  ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.fillStyle = '#6e6a8e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  for (let i = 0; i <= maxN; i += Math.max(1, Math.ceil(maxN / 4))) {
+    ctx.beginPath(); ctx.moveTo(8, py(i)); ctx.lineTo(W - 8, py(i)); ctx.stroke();
+    ctx.fillText(i, 10, py(i) - 3);
+  }
+  // 填充 + 折线
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(px(p.t), py(p.n)) : ctx.moveTo(px(p.t), py(p.n)));
+  ctx.strokeStyle = '#7aa2ff'; ctx.lineWidth = 1.6; ctx.stroke();
+  ctx.lineTo(px(pts[pts.length - 1].t), H - 18);
+  ctx.lineTo(px(pts[0].t), H - 18);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(122,162,255,.12)'; ctx.fill();
+  // X 轴时间标注
+  ctx.fillStyle = '#6e6a8e'; ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';  ctx.fillText(new Date(from).toLocaleString('zh', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}), 8, H - 5);
+  ctx.textAlign = 'right'; ctx.fillText('现在', W - 8, H - 5);
+}
+
+function renderRank() {
+  const list = (_statsData && _statsData.players) || [];
+  if (!list.length) {
+    $('statsRank').innerHTML = '<div class="empty-hint">还没有玩家进过服</div>';
+    return;
+  }
+  $('statsRank').innerHTML = list.map((p, i) => `
+    <div class="bk-row" style="padding:7px 12px">
+      <span style="width:26px;color:${i < 3 ? '#ffb35c' : '#6e6a8e'};font-weight:700">${i + 1}</span>
+      <div class="fname" style="flex:1">${esc(p.name)}</div>
+      <span style="color:#9a96b8;font-size:12px;margin-right:14px">进服 ${p.joinCount} 次</span>
+      <span style="color:#9a96b8;font-size:12px;margin-right:14px">最后在线 ${new Date(p.lastSeen).toLocaleString('zh', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+      <b style="color:#6affb0;font-size:13px">${fmtMin(p.totalMin)}</b>
+    </div>`).join('');
+}
+
+/* ===== 开机自启 ===== */
+async function loadBootstart() {
+  try {
+    const d = await api('/bootstart');
+    $('bootEnabled').checked = !!d.enabled;
+  } catch (e) {}
+}
+
+async function saveBootstart(cb) {
+  try {
+    await api('/bootstart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: cb.checked }),
+    });
+    toast(cb.checked ? '已开启开机自启' : '已关闭开机自启');
+  } catch (e) {
+    cb.checked = !cb.checked;
+    toast(e.message);
+  }
+}
+
+/* ===== 邮件通知 ===== */
+async function loadMail() {
+  try {
+    const c = await api('/mail');
+    $('mailEnabled').checked = !!c.enabled;
+    $('mailHost').value = c.host || 'smtp.qq.com';
+    $('mailPort').value = c.port || 587;
+    $('mailUser').value = c.user || '';
+    $('mailTo').value = c.to || '';
+    $('mailAuth').value = '';
+    $('mailAuth').placeholder = c.authCode ? '已保存，不修改则留空' : '授权码';
+  } catch (e) {}
+}
+
+async function saveMail() {
+  try {
+    await api('/mail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: $('mailEnabled').checked,
+        host: $('mailHost').value.trim(),
+        port: +$('mailPort').value || 587,
+        user: $('mailUser').value.trim(),
+        authCode: $('mailAuth').value,
+        to: $('mailTo').value.trim(),
+      }),
+    });
+    toast('邮件配置已保存');
+    loadMail();
+  } catch (e) { toast(e.message); }
+}
+
+async function testMail(btn) {
+  btn.disabled = true; btn.textContent = '发送中…';
+  try {
+    await api('/mail/test', { method: 'POST' });
+    toast('测试邮件已发送，请查收');
+  } catch (e) { toast(e.message); }
+  btn.disabled = false; btn.textContent = '发送测试邮件';
+}
+
+async function createBackup(id, btn) {
+  btn.disabled = true; btn.textContent = '备份中…';
+  try {
+    const r = await api(`/instances/${id}/backup`, { method: 'POST' });
+    toast(`备份完成：${r.file}（${fmtBytes(r.size)}）`);
+    loadBackups();
+  } catch (e) { toast(e.message); }
+  btn.disabled = false; btn.textContent = '立即备份';
+}
+
+async function loadBackups() {
+  try {
+    const bks = await api('/backups');
+    const totalSize = bks.reduce((a, b) => a + (b.size || 0), 0);
+    $('bkCount').textContent = bks.length ? `共 ${bks.length} 个 · 占用 ${fmtBytes(totalSize)}` : '';
+    $('bkList').innerHTML = bks.length ? bks.map(b => `
+      <div class="bk-row">
+        <div>
+          <div class="fname">${esc(b.file)}</div>
+          <div class="fmeta">${esc(b.instName || '')} · ${fmtBytes(b.size)} · ${timeAgo(b.createdAt)}</div>
+        </div>
+        <div class="sp">
+          <button class="qbtn ghost sm" onclick='openRestore(${JSON.stringify(b.file)}, ${JSON.stringify(b.instId||"")})'>恢复</button>
+          <button class="qbtn ghost sm" onclick='openBrowse(${JSON.stringify(b.file)}, ${JSON.stringify(b.instId||"")})'>浏览</button>
+          <button class="qbtn ghost sm" onclick='uploadCloud(${JSON.stringify(b.file)}, this)'>上传云盘</button>
+          <a class="qbtn ghost sm" style="text-decoration:none" href="/api/backups/${encodeURIComponent(b.file)}/download">下载</a>
+          <button class="qbtn ghost sm" style="color:#ff5c8a" onclick='delBackup(${JSON.stringify(b.file)})'>删除</button>
+        </div>
+      </div>`).join('') : '<div class="empty-hint">暂无备份</div>';
+  } catch (e) {
+    $('bkList').innerHTML = `<div class="empty-hint">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+/* ===== 备份浏览 / 局部恢复 ===== */
+let browseZip = '', browsePath = '', browseChecked = new Set();
+function openBrowse(file, instId) {
+  browseZip = file; browsePath = ''; browseChecked = new Set();
+  $('browseFile').textContent = file;
+  $('browseErr').textContent = '';
+  $('browseInst').innerHTML = instances.map(i =>
+    `<option value="${i.id}" ${i.id === instId ? 'selected' : ''}>${esc(i.name)}</option>`).join('');
+  $('browseOverlay').classList.add('show');
+  browseLs('');
+}
+
+async function browseLs(path) {
+  browsePath = path;
+  $('browseCrumb').innerHTML = '<a href="javascript:browseLs(\'\')" style="color:#9a96b8">根目录</a>' +
+    path.split('/').filter(Boolean).map((seg, i, arr) => {
+      const p = arr.slice(0, i + 1).join('/');
+      return ` / <a href="javascript:browseLs('${p.replace(/'/g, "\\'")}')" style="color:#c8c4e0">${esc(seg)}</a>`;
+    }).join('');
+  $('browseList').innerHTML = '<div class="empty-hint">加载中…</div>';
+  try {
+    const files = await api(`/backups/${encodeURIComponent(browseZip)}/ls?path=${encodeURIComponent(path)}`);
+    if (!files.length) { $('browseList').innerHTML = '<div class="empty-hint">空目录</div>'; return; }
+    $('browseList').innerHTML = files.map(f => {
+      const rel = (path ? path + '/' : '') + f.name;
+      const relJs = JSON.stringify(rel);
+      return `
+      <div class="bk-row" style="padding:6px 12px">
+        <input type="checkbox" style="width:auto;margin-right:8px" ${browseChecked.has(rel) ? 'checked' : ''}
+               onchange='browseToggle(${relJs}, this.checked)'>
+        <div style="min-width:0;display:flex;align-items:center;gap:8px;flex:1;cursor:${f.isDir ? 'pointer' : 'default'}"
+             ${f.isDir ? `onclick='browseLs(${relJs})'` : ''}>
+          <span style="font-size:12px;color:#6e6a8e">${f.isDir ? '[目录]' : ''}</span>
+          <div class="fname" style="font-size:13px">${esc(f.name)}</div>
+          ${f.isDir ? '' : `<div class="fmeta" style="margin-left:auto">${fmtBytes(f.size)}</div>`}
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    $('browseList').innerHTML = `<div class="empty-hint">${esc(e.message)}</div>`;
+  }
+}
+
+function browseToggle(rel, on) {
+  if (on) browseChecked.add(rel); else browseChecked.delete(rel);
+  $('browseRestoreBtn').disabled = !browseChecked.size;
+  $('browseRestoreBtn').textContent = browseChecked.size ? `恢复选中的 ${browseChecked.size} 项` : '恢复选中项';
+}
+
+async function browseRestore(btn) {
+  const paths = [...browseChecked];
+  if (!paths.length) return;
+  const instName = $('browseInst').selectedOptions[0].text;
+  if (!confirm(`把这 ${paths.length} 项恢复到「${instName}」？同名文件会被覆盖。\n（世界文件需要服务器处于停止状态）`)) return;
+  btn.disabled = true;
+  $('browseErr').textContent = '';
+  try {
+    const d = await api(`/backups/${encodeURIComponent(browseZip)}/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instId: $('browseInst').value, paths }),
+    });
+    toast(`已恢复 ${d.restored} 个文件` + (d.warning ? '（部分失败）' : ''));
+    if (d.warning) $('browseErr').textContent = d.warning;
+    else $('browseOverlay').classList.remove('show');
+  } catch (e) { $('browseErr').textContent = e.message; }
+  finally { btn.disabled = !browseChecked.size; }
+}
+
+async function delBackup(file) {
+  if (!confirm(`删除备份「${file}」？`)) return;
+  try {
+    await api(`/backups/${encodeURIComponent(file)}`, { method: 'DELETE' });
+    toast('已删除');
+    loadBackups();
+  } catch (e) { toast(e.message); }
+}
+
+let restoreFile = null;
+function openRestore(file, instId) {
+  restoreFile = file;
+  $('restoreFile').textContent = file;
+  $('restoreErr').textContent = '';
+  $('restoreInst').innerHTML = instances.map(i =>
+    `<option value="${i.id}" ${i.id === instId ? 'selected' : ''}>${esc(i.name)}（${statusMap[i.status] ? statusMap[i.status].text : i.status}）</option>`).join('')
+    || '<option value="">暂无世界</option>';
+  $('restoreOverlay').classList.add('show');
+}
+
+async function doRestore() {
+  const instId = $('restoreInst').value;
+  if (!instId) { $('restoreErr').textContent = '请选择世界'; return; }
+  if (!confirm('恢复会覆盖该世界的现有文件，确定继续？')) return;
+  $('restoreBtn').disabled = true;
+  try {
+    await api('/backups/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: restoreFile, instId }),
+    });
+    toast('恢复完成');
+    $('restoreOverlay').classList.remove('show');
+    loadAll();
+  } catch (e) {
+    $('restoreErr').textContent = e.message;
+  } finally {
+    $('restoreBtn').disabled = false;
+  }
+}
+
+/* ===== WebDAV ===== */
+async function loadDav() {
+  try {
+    const c = await api('/webdav');
+    $('davEnabled').checked = !!c.enabled;
+    $('davUrl').value = c.url || '';
+    $('davUser').value = c.user || '';
+    $('davPass').value = '';
+    $('davPass').placeholder = c.password ? '已保存，不修改则留空' : '应用密码';
+  } catch (e) {}
+}
+
+async function saveDav() {
+  try {
+    await api('/webdav', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: $('davEnabled').checked,
+        url: $('davUrl').value.trim(),
+        user: $('davUser').value.trim(),
+        password: $('davPass').value,
+      }),
+    });
+    toast('云盘配置已保存');
+    loadDav();
+  } catch (e) { toast(e.message); }
+}
+
+async function testDav() {
+  try {
+    await api('/webdav/test', { method: 'POST' });
+    toast('云盘连接成功');
+  } catch (e) { toast(e.message); }
+}
+
+async function uploadCloud(file, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '上传中…'; }
+  try {
+    await api(`/cloud/upload/${encodeURIComponent(file)}`, { method: 'POST' });
+    toast('上传完成');
+    loadCloud();
+  } catch (e) { toast(e.message); }
+  if (btn) { btn.disabled = false; btn.textContent = '上传云盘'; }
+}
+
+async function loadCloud() {
+  try {
+    const files = await api('/cloud');
+    $('cloudList').innerHTML = files.length ? files.map(f => `
+      <div class="bk-row">
+        <div>
+          <div class="fname">${esc(f.name)}</div>
+          <div class="fmeta">${fmtBytes(f.size)}</div>
+        </div>
+        <div class="sp">
+          <button class="qbtn ghost sm" onclick='pullCloud(${JSON.stringify(f.name)}, this)'>拉取到本地</button>
+        </div>
+      </div>`).join('') : '<div class="empty-hint">未启用或暂无云端备份</div>';
+  } catch (e) {
+    $('cloudList').innerHTML = `<div class="empty-hint">${esc(e.message)}</div>`;
+  }
+}
+
+async function pullCloud(file, btn) {
+  btn.disabled = true; btn.textContent = '拉取中…';
+  try {
+    await api(`/cloud/pull/${encodeURIComponent(file)}`, { method: 'POST' });
+    toast('已拉取到本地备份');
+    loadBackups();
+  } catch (e) { toast(e.message); }
+  btn.disabled = false; btn.textContent = '拉取到本地';
+}
+
+document.querySelectorAll('.overlay').forEach(o => {
+  o.addEventListener('click', e => {
+    if (e.target === o) o.classList.remove('show');
+  });
+});
+
+function restoreView() {
+  const h = location.hash.slice(1);
+  if (!h) return;
+  if (h.startsWith('inst/')) {
+    const [, id, tab] = h.split('/');
+    if (instances.find(i => i.id === id)) openConsole(id, tab || 'console');
+    else showPage('home');
+    return;
+  }
+  if (['home', 'mods', 'backup', 'settings'].includes(h)) showPage(h);
+}
+
+checkAuth();
+loadAll().then(restoreView);
+loadStats();
+setInterval(loadStats, 1000);
+setInterval(() => {
+  loadAll();
+  if ($('page-backup').classList.contains('show')) loadBackups();
+}, 4000);
+// 下载/安装期间加快刷新，让进度条流畅
+setInterval(() => {
+  if (instances.some(it => it.status === 'downloading' || (it.status === 'starting' && it.dlLabel))) loadAll();
+}, 1500);
+</script>
+</body>
+</html>

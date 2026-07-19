@@ -1,0 +1,6 @@
+*.exe
+*.exe~
+data/
+panel.log
+docs/node_modules/
+PRODUCT.md
