@@ -274,6 +274,7 @@ func (m *Manager) authMiddleware(next http.Handler) http.Handler {
 		p := r.URL.Path
 		if !strings.HasPrefix(p, "/api/") ||
 			p == "/api/auth/status" || p == "/api/auth/login" || p == "/api/auth/setup" ||
+			p == "/api/remote/status" || p == "/api/remote/disconnect" ||
 			strings.HasPrefix(p, "/api/public/") {
 			next.ServeHTTP(w, r)
 			return

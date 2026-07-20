@@ -154,8 +154,26 @@ func (m *Manager) handleCreate(w http.ResponseWriter, r *http.Request) {
 	typeName := map[string]string{"paper": "Paper", "purpur": "Purpur", "fabric": "Fabric", "forge": "Forge", "neoforge": "NeoForge"}[typ]
 	m.addActivity("blue", fmt.Sprintf("正在创建新世界 <b>%s</b>（%s %s）", in.Name, typeName, in.Version))
 
+	switch typ {
+	case "fabric":
+		rs.console.SetSteps(stepFabricMeta, stepFabricJar, stepConfig)
+	case "forge", "neoforge":
+		rs.console.SetSteps(stepJava, stepInstaller, stepRunInstaller, stepConfig)
+	default: // paper / purpur
+		rs.console.SetSteps(stepCoreInfo, stepCoreJar, stepConfig)
+	}
+
 	go func() {
 		jar, err := m.installServerCore(typ, in.Version, req.LoaderVersion, dir, rs.console)
+		if err == nil {
+			rs.console.StepRun(stepConfig)
+			if werr := writeServerFiles(dir, in.Port, in.Name); werr != nil {
+				rs.console.StepFail(stepConfig)
+				err = werr
+			} else {
+				rs.console.StepDone(stepConfig)
+			}
+		}
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if err != nil {
@@ -166,11 +184,6 @@ func (m *Manager) handleCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.JarFile = jar
-		if err := writeServerFiles(dir, in.Port, in.Name); err != nil {
-			rs.status = "error"
-			rs.errMsg = err.Error()
-			return
-		}
 		rs.status = "stopped"
 		m.save()
 		rs.console.Broadcast("[MCS] 世界创建完成，可以启动了！")

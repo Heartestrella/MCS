@@ -195,6 +195,45 @@
   .dl-prog .dl-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg,#ffb86a,#ff9a5c); transition: width .3s; }
   .dl-prog .dl-fill.indet { width: 30% !important; animation: dl-slide 1.2s ease-in-out infinite alternate; }
   @keyframes dl-slide { from { margin-left: 0; } to { margin-left: 70%; } }
+
+  /* ===== 下载管理页 ===== */
+  .dlm-layout { display: flex; gap: 18px; align-items: flex-start; }
+  .dlm-side {
+    flex: none; width: 190px; position: sticky; top: 16px;
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 16px; padding: 22px 18px; display: flex; flex-direction: column; gap: 24px;
+  }
+  .dlm-stat .lbl {
+    font-size: 13px; color: #9a96b8; padding-bottom: 6px; margin-bottom: 8px;
+    border-bottom: 2px solid rgba(106,255,176,.5);
+  }
+  .dlm-stat .val { font-size: 26px; font-weight: 700; color: #fff; word-break: break-all; }
+  .dlm-stat .val.sm { font-size: 20px; }
+  .dlm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+  .dlm-task {
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.09);
+    border-radius: 16px; padding: 18px 20px; position: relative;
+  }
+  .dlm-task h3 { font-size: 15px; color: #6affb0; margin-bottom: 12px; padding-right: 30px; }
+  .dlm-task h3 .tname { color: #fff; }
+  .dlm-task .close {
+    position: absolute; top: 12px; right: 14px; cursor: pointer; border: none;
+    background: transparent; color: #9a96b8; font-size: 18px; line-height: 1; font-family: inherit;
+  }
+  .dlm-task .close:hover { color: #fff; }
+  .dlm-step { display: flex; align-items: center; gap: 12px; padding: 5px 0; font-size: 13.5px; }
+  .dlm-step .ic { flex: none; width: 44px; text-align: center; font-size: 12.5px; font-weight: 600; }
+  .dlm-step .ic.done { color: #6affb0; }
+  .dlm-step .ic.run { color: #3fa7ff; }
+  .dlm-step .ic.err { color: #ff5c8a; }
+  .dlm-step .ic.wait { color: #6e6a8e; letter-spacing: 2px; }
+  .dlm-step .ic.run .dots, .dlm-step .ic.wait { animation: dlm-pulse 1.4s ease-in-out infinite; }
+  @keyframes dlm-pulse { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
+  .dlm-step .nm { color: #c8c4e0; }
+  .dlm-step.done .nm { color: #9a96b8; }
+  .dlm-step.err .nm { color: #ff5c8a; }
+  .dlm-task .dlm-err { margin-top: 10px; font-size: 13px; color: #ff5c8a; word-break: break-all; }
+  .dlm-task .actions { display: flex; gap: 10px; margin-top: 14px; justify-content: flex-end; }
   .tags { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
   .tag {
     font-size: 12px; color: #b8b4d0;
@@ -531,6 +570,10 @@
         <span data-page="backup" onclick="showPage('backup')">备份</span>
         <span data-page="settings" onclick="showPage('settings')">设置</span>
       </div>
+      <span id="remoteBadge" style="display:none;font-size:12px;color:#8ab4ff;background:rgba(90,140,255,.12);border:1px solid rgba(90,140,255,.35);border-radius:20px;padding:4px 12px;margin-right:12px;white-space:nowrap">
+        远程: <b id="remoteBadgeHost"></b>
+        <a href="javascript:doRemoteDisconnect()" style="color:#ff9a9a;margin-left:6px;text-decoration:none">断开</a>
+      </span>
       <div class="avatar"></div>
     </nav>
 
@@ -717,6 +760,22 @@
           <div class="set-row" style="margin-top:16px;border-top:1px solid rgba(255,255,255,.06);padding-top:16px">
             <div class="set-desc"><b>开机自动运行面板</b><span>配合世界的「随面板自动启动」，断电重启后全自动恢复开服</span></div>
             <input type="checkbox" id="bootEnabled" onchange="saveBootstart(this)">
+          </div>
+        </div>
+        <div class="panel">
+          <h4>远程面板</h4>
+          <div class="set-row">
+            <div class="set-desc"><b>连接到其他面板</b><span id="remoteSetDesc">本页仅作为界面，所有世界和操作来自远程面板</span></div>
+          </div>
+          <div class="dav-form" style="margin-top:10px">
+            <div class="full">
+              <label>远程面板地址</label>
+              <input id="remoteSetUrl" placeholder="http://192.168.1.10:8145">
+            </div>
+            <div class="full" style="display:flex; gap:10px">
+              <button class="qbtn main sm" onclick="doRemoteConnect(true)">连接</button>
+              <button class="qbtn ghost sm" id="remoteSetDisc" style="display:none" onclick="doRemoteDisconnect()">断开，回到本机</button>
+            </div>
           </div>
         </div>
         <div class="panel">
@@ -1285,6 +1344,25 @@
     </div><!-- /inst-layout -->
   </div><!-- /page-inst -->
 
+  <!-- ============ 下载管理（首次安装时显示） ============ -->
+  <div class="page" id="page-download">
+    <div class="inst-head">
+      <span class="back" onclick="showPage('home')">← 返回</span>
+      <div>
+        <h2>下载管理</h2>
+        <div class="meta" id="dlmMeta"></div>
+      </div>
+    </div>
+    <div class="dlm-layout">
+      <div class="dlm-side">
+        <div class="dlm-stat"><div class="lbl">总进度</div><div class="val" id="dlmPct">—</div></div>
+        <div class="dlm-stat"><div class="lbl">下载速度</div><div class="val sm" id="dlmSpeed">—</div></div>
+        <div class="dlm-stat"><div class="lbl">剩余文件</div><div class="val" id="dlmLeft">—</div></div>
+      </div>
+      <div class="dlm-main" id="dlmTasks"></div>
+    </div>
+  </div>
+
   <!-- 模组版本选择 / 安装 -->
   <div class="overlay" id="modVerOverlay">
     <div class="modal">
@@ -1377,6 +1455,27 @@
       <div class="actions">
         <button class="qbtn ghost" onclick="doSetup(true)">本机自用，跳过</button>
         <button class="qbtn main" id="setupBtn" onclick="doSetup(false)">创建管理员</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 首次启动：远程面板问询 -->
+  <div class="overlay" id="remoteOverlay" style="z-index:55">
+    <div class="modal" style="width:min(420px,92vw)">
+      <svg class="modal-logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polygon points="32,6 56,19 32,32 8,19" fill="url(#lgTop)"/>
+        <polygon points="8,19 32,32 32,58 8,45" fill="url(#lgLeft)"/>
+        <polygon points="56,19 32,32 32,58 56,45" fill="url(#lgRight)"/>
+      </svg>
+      <h2>连接到其他面板？</h2>
+      <p style="color:#9a96b8;font-size:13px;line-height:1.6">可以把这里当作另一台 MCS 面板的遥控器：填入对方地址后，本页仅作为界面，所有世界和操作都来自那台面板。留空或选“仅本机”则管理本机。之后可随时在设置页更改。</p>
+      <label>远程面板地址</label>
+      <input id="remoteUrl" placeholder="http://192.168.1.10:8145"
+             onkeydown="if(event.key==='Enter')doRemoteConnect()">
+      <div class="err" id="remoteErr"></div>
+      <div class="actions">
+        <button class="qbtn ghost" onclick="doRemoteSkip()">仅本机使用</button>
+        <button class="qbtn main" id="remoteBtn" onclick="doRemoteConnect()">连接</button>
       </div>
     </div>
   </div>
@@ -1546,6 +1645,7 @@ function showPage(name) {
   if (name === 'mods' && !window._modsInit) { window._modsInit = 1; initMods(); }
   if (name === 'backup') loadBackupPage();
   if (name === 'settings') loadSettingsPage();
+  if (name === 'download') renderDownloadPage();
 }
 
 /* ===== 系统状态：Ubuntu 系统监视器风格折线图 ===== */
@@ -1722,7 +1822,7 @@ function render() {
     const isRunning = it.status === 'running' || it.status === 'starting';
     const busy = it.status === 'downloading' || it.status === 'stopping';
     div.innerHTML = `
-      <div class="banner ${banners[idx % 3]}" onclick="openConsole('${it.id}')">
+      <div class="banner ${banners[idx % 3]}" onclick="${it.status === 'downloading' ? `showPage('download')` : `openConsole('${it.id}')`}">
         <span class="status-pill ${st.pill}">${st.text}</span>
         <span class="wname"></span>
       </div>
@@ -1804,7 +1904,14 @@ async function loadAll() {
     instances = await api('/instances');
     instances.sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt));
     api('/talk/rooms').then(r => { window._talkRooms = r; }).catch(() => {});
+    // 下载中的实例自动纳入下载管理页（含刷新页面后恢复）
+    instances.forEach(it => {
+      if (it.status === 'downloading' && !dlWatch.has(it.id)) {
+        dlWatch.set(it.id, { kind: it.type === 'modpack' ? '整合包安装' : '创建新世界', name: it.name, steps: it.installSteps || [], status: 'downloading', error: '' });
+      }
+    });
     render();
+    renderDownloadPage();
     updateConsoleBtn();
     const acts = await api('/activity');
     const f = $('feeds');
@@ -1987,14 +2094,104 @@ async function submitCreate() {
     closeCreate();
     $('cName').value = '';
     $('cDir').value = '';
-    toast('世界创建中，正在下载服务端核心…');
     await loadAll();
-    openConsole(it.id);
+    watchDownload(it.id, '创建新世界');
   } catch (e) {
     $('cErr').textContent = e.message;
   } finally {
     $('cSubmit').disabled = false;
   }
+}
+
+/* ===== 下载管理页（首次安装时显示） ===== */
+const dlWatch = new Map(); // id -> {kind, name, steps, status, error} 最近一次快照缓存
+
+function watchDownload(id, kind) {
+  const it = instances.find(i => i.id === id);
+  dlWatch.set(id, { kind, name: it ? it.name : '', steps: it ? (it.installSteps || []) : [], status: 'downloading', error: '' });
+  showPage('download');
+}
+
+function unwatchDownload(id) {
+  dlWatch.delete(id);
+  if (!dlWatch.size) { showPage('home'); return; }
+  renderDownloadPage();
+}
+
+function stepRight(s) {
+  if (s.status === 'done') return '✓';
+  if (s.status === 'error') return '✗';
+  if (s.status === 'pending') return '<span class="dots">●●●</span>';
+  if (s.total > 10000) return Math.min(100, Math.round(s.done * 100 / s.total)) + '%';
+  if (s.total > 0) return `${s.done}/${s.total}`;
+  return '<span class="dots">●●●</span>';
+}
+
+function renderDownloadPage() {
+  // 用最新实例快照刷新 watch 缓存（即使页面不可见也要跟进，避免完成后丢失步骤快照）
+  for (const [id, w] of dlWatch) {
+    const it = instances.find(i => i.id === id);
+    if (!it) continue;
+    w.name = it.name;
+    w.status = it.status === 'downloading' ? 'downloading' : it.status === 'error' ? 'error' : 'done';
+    w.error = it.error || '';
+    if ((it.installSteps || []).length) w.steps = it.installSteps;
+    else if (w.status === 'done') w.steps = w.steps.map(s => ({ ...s, status: 'done' }));
+  }
+  if (!$('page-download').classList.contains('show')) return;
+
+  // 左侧汇总：总进度 = 已完成步骤数 / 总步骤数（进行中步骤按其百分比折算）
+  let stepSum = 0, stepN = 0, speed = 0, left = 0, active = 0;
+  for (const [id, w] of dlWatch) {
+    const it = instances.find(i => i.id === id) || {};
+    if (w.status === 'downloading') { active++; speed += it.dlSpeed || 0; left += it.dlFilesLeft || 0; }
+    for (const s of w.steps) {
+      stepN++;
+      stepSum += s.status === 'done' ? 1 : s.status === 'running' && s.total > 0 ? Math.min(1, s.done / s.total) : 0;
+    }
+  }
+  $('dlmPct').textContent = stepN ? (stepSum * 100 / stepN).toFixed(2) + ' %' : '—';
+  $('dlmSpeed').textContent = active ? fmtSpeed(speed) : '—';
+  $('dlmLeft').textContent = active ? String(left) : '—';
+  $('dlmMeta').textContent = active ? `${active} 个任务进行中` : dlWatch.size ? '全部任务已结束' : '当前没有下载任务';
+
+  const box = $('dlmTasks');
+  box.innerHTML = '';
+  if (!dlWatch.size) {
+    box.innerHTML = '<div class="empty-hint">当前没有下载任务</div>';
+    return;
+  }
+  for (const [id, w] of dlWatch) {
+    const card = document.createElement('div');
+    card.className = 'dlm-task';
+    const closable = w.status !== 'downloading';
+    card.innerHTML = `
+      <h3>${esc(w.kind)}：<span class="tname"></span></h3>
+      ${closable ? `<button class="close" title="移除任务" onclick="unwatchDownload('${id}')">×</button>` : ''}
+      ${w.steps.map(s => `
+        <div class="dlm-step ${s.status === 'done' ? 'done' : s.status === 'error' ? 'err' : ''}">
+          <span class="ic ${s.status === 'done' ? 'done' : s.status === 'error' ? 'err' : s.status === 'running' ? 'run' : 'wait'}">${stepRight(s)}</span>
+          <span class="nm">${esc(s.name)}</span>
+        </div>`).join('')}
+      ${w.status === 'error' ? `<div class="dlm-err">${esc(w.error || '安装失败')}</div>` : ''}
+      ${closable ? `
+        <div class="actions">
+          ${w.status === 'error'
+            ? `<button class="qbtn ghost sm" onclick="openConsole('${id}')">查看控制台</button>`
+            : `<button class="qbtn ghost sm" onclick="showPage('home')">返回主页</button>
+               <button class="qbtn main sm" onclick="dlmStart('${id}')">立即启动</button>`}
+        </div>` : ''}`;
+    card.querySelector('.tname').textContent = w.name;
+    box.appendChild(card);
+  }
+}
+
+async function dlmStart(id) {
+  dlWatch.delete(id);
+  try {
+    await api(`/instances/${id}/start`, { method: 'POST' });
+    openConsole(id);
+  } catch (e) { toast(e.message); }
 }
 
 /* ===== 实例详情页 ===== */
@@ -2768,10 +2965,8 @@ async function doPackInstall() {
       });
     }
     $('packOverlay').classList.remove('show');
-    toast('整合包安装中，进度见控制台');
-    showPage('home');
     await loadAll();
-    openConsole(it.id);
+    watchDownload(it.id, '整合包安装');
   } catch (e) {
     $('packErr').textContent = e.message;
   } finally {
@@ -2804,6 +2999,65 @@ function loadSettingsPage() {
   loadBootstart();
   loadRestart();
   loadAuthCfg();
+  loadRemoteCfg();
+}
+
+/* ===== 远程面板模式 ===== */
+let remoteInfo = { connected: false, url: '', asked: true };
+
+function updateRemoteBadge() {
+  const b = $('remoteBadge');
+  if (remoteInfo.connected) {
+    try { $('remoteBadgeHost').textContent = new URL(remoteInfo.url).host; }
+    catch (e) { $('remoteBadgeHost').textContent = remoteInfo.url; }
+    b.style.display = '';
+  } else {
+    b.style.display = 'none';
+  }
+}
+
+function loadRemoteCfg() {
+  $('remoteSetUrl').value = remoteInfo.url || localStorage.getItem('mcsRemoteUrl') || '';
+  $('remoteSetDesc').textContent = remoteInfo.connected
+    ? '当前已连接：' + remoteInfo.url : '本页仅作为界面，所有世界和操作来自远程面板';
+  $('remoteSetDisc').style.display = remoteInfo.connected ? '' : 'none';
+}
+
+async function doRemoteConnect(fromSettings) {
+  const input = fromSettings ? $('remoteSetUrl') : $('remoteUrl');
+  const url = input.value.trim();
+  const showErr = msg => { if (fromSettings) toast(msg); else $('remoteErr').textContent = msg; };
+  if (!url) { showErr('请填写远程面板地址'); return; }
+  if (!fromSettings) { $('remoteErr').textContent = ''; $('remoteBtn').disabled = true; $('remoteBtn').textContent = '连接中…'; }
+  try {
+    const r = await api('/remote/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    try { localStorage.setItem('mcsRemoteUrl', r.url); } catch (e) {}
+    toast('已连接到远程面板，本页仅作为界面');
+    $('remoteOverlay').classList.remove('show');
+    location.reload();
+  } catch (e) {
+    showErr(e.message);
+  } finally {
+    if (!fromSettings) { $('remoteBtn').disabled = false; $('remoteBtn').textContent = '连接'; }
+  }
+}
+
+async function doRemoteSkip() {
+  try { await api('/remote/skip', { method: 'POST' }); } catch (e) {}
+  $('remoteOverlay').classList.remove('show');
+  loadAll().then(restoreView);
+}
+
+async function doRemoteDisconnect() {
+  try {
+    await api('/remote/disconnect', { method: 'POST' });
+    toast('已断开远程面板，回到本机模式');
+    location.reload();
+  } catch (e) { toast(e.message); }
 }
 
 /* ===== 回收站 ===== */
@@ -2878,7 +3132,7 @@ async function doSetup(skip) {
     });
     $('setupOverlay').classList.remove('show');
     toast(skip ? '已跳过，可随时在设置页开启密码' : '管理员账号已创建');
-    loadAll();
+    initPanel();
   } catch (e) { $('setupErr').textContent = e.message; }
   finally { $('setupBtn').disabled = false; }
 }
@@ -2894,7 +3148,7 @@ async function doLogin() {
     });
     $('loginOverlay').classList.remove('show');
     $('loginPw').value = '';
-    loadAll();
+    initPanel();
   } catch (e) {
     $('loginErr').textContent = e.message;
   } finally {
@@ -4706,11 +4960,24 @@ function restoreView() {
     else showPage('home');
     return;
   }
-  if (['home', 'mods', 'backup', 'settings'].includes(h)) showPage(h);
+  if (['home', 'mods', 'backup', 'settings', 'download'].includes(h)) showPage(h);
 }
 
-checkAuth();
-loadAll().then(restoreView);
+async function initPanel() {
+  const ok = await checkAuth(); // 远程已连时查的是远程面板的认证状态
+  if (!ok) return;              // 登录/初始化完成后 doLogin/doSetup 会再调 initPanel
+  try {
+    remoteInfo = await api('/remote/status');
+  } catch (e) {}
+  updateRemoteBadge();
+  if (!remoteInfo.connected && !remoteInfo.asked) {
+    $('remoteUrl').value = localStorage.getItem('mcsRemoteUrl') || '';
+    $('remoteOverlay').classList.add('show');
+    return; // doRemoteConnect / doRemoteSkip 会继续加载
+  }
+  loadAll().then(restoreView);
+}
+initPanel();
 loadStats();
 setInterval(loadStats, 1000);
 setInterval(() => {
@@ -4719,7 +4986,8 @@ setInterval(() => {
 }, 4000);
 // 下载/安装期间加快刷新，让进度条流畅
 setInterval(() => {
-  if (instances.some(it => it.status === 'downloading' || (it.status === 'starting' && it.dlLabel))) loadAll();
+  if (instances.some(it => it.status === 'downloading' || (it.status === 'starting' && it.dlLabel))
+    || ($('page-download').classList.contains('show') && dlWatch.size)) loadAll();
 }, 1500);
 </script>
 </body>

@@ -89,7 +89,7 @@ Modrinth 搜索安装,按实例的版本和加载器过滤,不兼容有红黄标
 ## 构建
 
 ```
-build.bat        # Windows 一键出两个 exe
+build.bat
 ```
 
 或手动(全平台可交叉编译,无 CGO):

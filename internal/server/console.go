@@ -26,10 +26,23 @@ type ConsoleHub struct {
 	dlDone  int64
 	dlTotal int64
 
+	// 结构化安装步骤（供下载管理页展示），并行步骤各自按名字更新
+	steps      []InstallStep
+	filesTotal int
+	filesDone  int
+
 	// 下载速度统计：所有并发下载协程通过 AddBytes 汇总字节数，
 	// 用近几秒的采样窗口算瞬时速度（B/s）
 	dlBytes   int64
 	dlSamples []dlSample
+}
+
+// InstallStep 是安装任务里的一个步骤，Status: pending / running / done / error。
+type InstallStep struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Done   int64  `json:"done,omitempty"`
+	Total  int64  `json:"total,omitempty"`
 }
 
 type dlSample struct {
@@ -64,9 +77,18 @@ func (h *ConsoleHub) LaunchLog() []string {
 }
 
 // SetProgress records the current download progress shown on the instance card.
+// label 与某个步骤同名时，同时把该步骤置为 running 并更新其进度，
+// 这样各下载函数不用改签名就能把进度汇报到下载管理页对应的步骤上。
 func (h *ConsoleHub) SetProgress(label string, done, total int64) {
 	h.mu.Lock()
 	h.dlLabel, h.dlDone, h.dlTotal = label, done, total
+	for i := range h.steps {
+		if h.steps[i].Name == label && h.steps[i].Status != "done" && h.steps[i].Status != "error" {
+			h.steps[i].Status = "running"
+			h.steps[i].Done, h.steps[i].Total = done, total
+			break
+		}
+	}
 	h.mu.Unlock()
 }
 
@@ -74,7 +96,78 @@ func (h *ConsoleHub) ClearProgress() {
 	h.mu.Lock()
 	h.dlLabel, h.dlDone, h.dlTotal = "", 0, 0
 	h.dlBytes, h.dlSamples = 0, nil
+	h.steps = nil
+	h.filesTotal, h.filesDone = 0, 0
 	h.mu.Unlock()
+}
+
+// SetSteps resets the structured install step list (all pending).
+func (h *ConsoleHub) SetSteps(names ...string) {
+	h.mu.Lock()
+	h.steps = make([]InstallStep, len(names))
+	for i, n := range names {
+		h.steps[i] = InstallStep{Name: n, Status: "pending"}
+	}
+	h.mu.Unlock()
+}
+
+// AddSteps appends steps to the existing list.
+// 早期步骤进行中才知道后续步骤时用（如整合包解析清单后按加载器类型追加）。
+func (h *ConsoleHub) AddSteps(names ...string) {
+	h.mu.Lock()
+	for _, n := range names {
+		h.steps = append(h.steps, InstallStep{Name: n, Status: "pending"})
+	}
+	h.mu.Unlock()
+}
+
+func (h *ConsoleHub) setStepStatus(name, status string) {
+	h.mu.Lock()
+	for i := range h.steps {
+		if h.steps[i].Name == name {
+			h.steps[i].Status = status
+			if status == "done" && h.steps[i].Total > 0 {
+				h.steps[i].Done = h.steps[i].Total
+			}
+			break
+		}
+	}
+	h.mu.Unlock()
+}
+
+func (h *ConsoleHub) StepRun(name string)  { h.setStepStatus(name, "running") }
+func (h *ConsoleHub) StepDone(name string) { h.setStepStatus(name, "done") }
+func (h *ConsoleHub) StepFail(name string) { h.setStepStatus(name, "error") }
+
+// Steps returns a copy of the current install steps.
+func (h *ConsoleHub) Steps() []InstallStep {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]InstallStep, len(h.steps))
+	copy(out, h.steps)
+	return out
+}
+
+// AddFilesTotal / FileDone / FilesLeft: 下载管理页"剩余文件"计数。
+func (h *ConsoleHub) AddFilesTotal(n int) {
+	h.mu.Lock()
+	h.filesTotal += n
+	h.mu.Unlock()
+}
+
+func (h *ConsoleHub) FileDone() {
+	h.mu.Lock()
+	h.filesDone++
+	h.mu.Unlock()
+}
+
+func (h *ConsoleHub) FilesLeft() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.filesTotal <= h.filesDone {
+		return 0
+	}
+	return h.filesTotal - h.filesDone
 }
 
 func (h *ConsoleHub) Progress() (label string, done, total int64) {

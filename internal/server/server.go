@@ -181,6 +181,12 @@ func Run() {
 	mux.HandleFunc("POST /api/auth/set", mgr.handleAuthSet)
 	mux.HandleFunc("POST /api/auth/setup", mgr.handleAuthSetup)
 
+	// 远程面板模式（本页仅作 UI，API 反代到另一台面板）
+	mux.HandleFunc("GET /api/remote/status", mgr.handleRemoteStatus)
+	mux.HandleFunc("POST /api/remote/connect", mgr.handleRemoteConnect)
+	mux.HandleFunc("POST /api/remote/skip", mgr.handleRemoteSkip)
+	mux.HandleFunc("POST /api/remote/disconnect", mgr.handleRemoteDisconnect)
+
 	// Quick-Talk 语音房间(Go 版中转;前端构建产物 embed 在 web/talk/)
 	talk := NewTalkServer(*dataDir)
 	talk.mgr = mgr
@@ -214,7 +220,7 @@ func Run() {
 		httpsAddr := "0.0.0.0:" + *httpsPort
 		srv := &http.Server{
 			Addr:      httpsAddr,
-			Handler:   mgr.authMiddleware(mux),
+			Handler:   mgr.remoteMiddleware(mgr.authMiddleware(mux)),
 			TLSConfig: tlsConfig(certFile, keyFile),
 		}
 		log.Printf("HTTPS listening on https://%s (语音开黑局域网入口)", httpsAddr)
@@ -234,7 +240,7 @@ func Run() {
 		log.Fatal(err)
 	}
 	go func() {
-		log.Fatal(http.Serve(ln, mgr.authMiddleware(mux)))
+		log.Fatal(http.Serve(ln, mgr.remoteMiddleware(mgr.authMiddleware(mux))))
 	}()
 
 	// server 版：阻塞等待；webview 版：打开内嵌浏览器窗口，关窗即退出面板

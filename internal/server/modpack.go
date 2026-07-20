@@ -43,6 +43,23 @@ type mrIndex struct {
 	Dependencies  map[string]string `json:"dependencies"`
 }
 
+// 下载管理页的结构化步骤名。下载函数把进度 label 设为与步骤同名，
+// SetProgress 就会自动把进度挂到对应步骤上（见 ConsoleHub.SetProgress）。
+const (
+	stepPackDownload = "下载整合包文件"
+	stepExtract      = "解压整合包文件"
+	stepPackFiles    = "下载整合包内容"
+	stepFabricMeta   = "获取 Fabric 下载地址"
+	stepFabricJar    = "下载 Fabric 服务端"
+	stepJava         = "准备 Java 环境"
+	stepInstaller    = "下载安装器"
+	stepRunInstaller = "安装游戏"
+	stepDeps         = "补齐缺失前置"
+	stepCoreInfo     = "获取构建信息"
+	stepCoreJar      = "下载服务端核心"
+	stepConfig       = "写入配置"
+)
+
 // ===== CurseForge 整合包（manifest.json，.zip/.mcpack）支持 =====
 
 type cfManifest struct {
@@ -496,9 +513,11 @@ func (m *Manager) installModpack(in *Instance, rs *runtimeState, packURL string)
 	dir := m.instDir(in.ID)
 	hub := rs.console
 
+	hub.SetSteps(stepPackDownload)
 	hub.Broadcast("[MCS] 正在下载整合包文件（优先 MCIM 国内镜像，失败自动切官方源）...")
 	packPath := filepath.Join(dir, "pack.mrpack")
-	if err := downloadToHub(packURL, packPath, hub, "下载整合包"); err != nil {
+	if err := downloadToHub(packURL, packPath, hub, stepPackDownload); err != nil {
+		hub.StepFail(stepPackDownload)
 		m.mu.Lock()
 		rs.status = "error"
 		rs.errMsg = "下载整合包失败: " + err.Error()
@@ -507,6 +526,7 @@ func (m *Manager) installModpack(in *Instance, rs *runtimeState, packURL string)
 		m.addActivity("orange", fmt.Sprintf("<b>%s</b> 整合包安装失败", in.Name))
 		return
 	}
+	hub.StepDone(stepPackDownload)
 	defer os.Remove(packPath)
 	m.installPackFromFile(in, rs, packPath)
 }
@@ -728,7 +748,71 @@ func (m *Manager) installPackFromFile(in *Instance, rs *runtimeState, packPath s
 		return
 	}
 
-	// 1) 下载整合包声明的文件（跳过仅客户端/可选的）
+	// 确定 MC 版本与加载器类型，得出完整步骤列表（下载管理页展示）
+	mc := idx.Dependencies["minecraft"]
+	if mc == "" {
+		fail("整合包未声明 Minecraft 版本")
+		return
+	}
+	loaderType := ""
+	switch {
+	case idx.Dependencies["fabric-loader"] != "":
+		loaderType = "fabric"
+	case idx.Dependencies["forge"] != "":
+		loaderType = "forge"
+	case idx.Dependencies["neoforge"] != "":
+		loaderType = "neoforge"
+	case idx.Dependencies["quilt-loader"] != "":
+		fail("暂不支持 Quilt 服务端整合包")
+		return
+	default:
+		fail("整合包未声明服务端加载器（fabric/forge/neoforge）")
+		return
+	}
+	steps := []string{stepExtract, stepPackFiles}
+	if loaderType == "fabric" {
+		steps = append(steps, stepFabricMeta, stepFabricJar)
+	} else {
+		steps = append(steps, stepJava, stepInstaller, stepRunInstaller)
+	}
+	if kind == "modrinth" {
+		steps = append(steps, stepDeps)
+	}
+	steps = append(steps, stepConfig)
+	hub.AddSteps(steps...)
+
+	// 1) 解压 overrides（server-overrides 优先级更高，后写覆盖）。
+	// 先解压再并发下载，避免两者同时写 mods/ 下同名文件。
+	hub.StepRun(stepExtract)
+	for _, od := range overrideDirs {
+		prefix := root + strings.Trim(od, "/") + "/"
+		for _, zf := range zr.File {
+			if !strings.HasPrefix(zf.Name, prefix) || zf.FileInfo().IsDir() {
+				continue
+			}
+			rel := strings.TrimPrefix(zf.Name, prefix)
+			p, err := safeJoin(dir, rel)
+			if err != nil {
+				continue
+			}
+			os.MkdirAll(filepath.Dir(p), 0755)
+			rc, err := zf.Open()
+			if err != nil {
+				continue
+			}
+			out, err := os.Create(p)
+			if err != nil {
+				rc.Close()
+				continue
+			}
+			io.Copy(out, rc)
+			out.Close()
+			rc.Close()
+		}
+	}
+	hub.StepDone(stepExtract)
+
+	// 2) 整合包声明的文件列表（跳过仅客户端/可选的）
 	var files []mrFile
 	skipped := 0
 	for _, f := range idx.Files {
@@ -769,137 +853,122 @@ func (m *Manager) installPackFromFile(in *Instance, rs *runtimeState, packPath s
 		return f.Path, downloadToHub(f.Downloads[0], dest, hub, "")
 	}
 
+	// downloadPackFiles 并发下载全部文件，失败的串行重试一轮
+	downloadPackFiles := func() error {
+		hub.StepRun(stepPackFiles)
+		hub.AddFilesTotal(len(files))
+		var (
+			dwg    sync.WaitGroup
+			sem    = make(chan struct{}, 16)
+			prog   sync.Mutex
+			done   int
+			ok     int
+			failed []mrFile
+		)
+		for _, f := range files {
+			dwg.Add(1)
+			go func(f mrFile) {
+				defer dwg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				label, err := dlOne(f)
+				prog.Lock()
+				done++
+				if err != nil {
+					failed = append(failed, f)
+					hub.Broadcast(fmt.Sprintf("[MCS] ✗ (%d/%d) %s 下载失败: %v（稍后自动重试）", done, len(files), label, err))
+				} else {
+					ok++
+					hub.FileDone()
+					hub.Broadcast(fmt.Sprintf("[MCS] ✓ (%d/%d) %s", done, len(files), label))
+				}
+				hub.SetProgress(stepPackFiles, int64(ok), int64(len(files)))
+				prog.Unlock()
+			}(f)
+		}
+		dwg.Wait()
+
+		// 失败的文件在其他任务完成后串行重试一轮（放慢节奏，避开 CDN 风控/限流）
+		if len(failed) > 0 {
+			hub.Broadcast(fmt.Sprintf("[MCS] 首轮有 %d 个文件失败，等待 5 秒后逐个重试 ...", len(failed)))
+			time.Sleep(5 * time.Second)
+			var errs []string
+			for i, f := range failed {
+				label, err := dlOne(f)
+				if err != nil {
+					errs = append(errs, fmt.Sprintf("%s: %v", label, err))
+					hub.Broadcast(fmt.Sprintf("[MCS] ✗ 重试 (%d/%d) %s 仍然失败: %v", i+1, len(failed), label, err))
+				} else {
+					ok++
+					hub.FileDone()
+					hub.Broadcast(fmt.Sprintf("[MCS] ✓ 重试 (%d/%d) %s", i+1, len(failed), label))
+				}
+				hub.SetProgress(stepPackFiles, int64(ok), int64(len(files)))
+				time.Sleep(2 * time.Second)
+			}
+			if len(errs) > 0 {
+				hub.Broadcast(fmt.Sprintf("[MCS] 以下 %d 个文件重试后仍失败：", len(errs)))
+				for _, e := range errs {
+					hub.Broadcast("[MCS]   " + e)
+				}
+				return fmt.Errorf("%d 个文件下载失败（明细见上方日志）", len(errs))
+			}
+			hub.Broadcast("[MCS] 重试全部成功！")
+		}
+		hub.StepDone(stepPackFiles)
+		return nil
+	}
+
+	// 3) 并行执行：整合包内容下载 ∥ 服务端加载器安装（互不依赖）
 	var (
-		wg     sync.WaitGroup
-		sem    = make(chan struct{}, 16)
-		prog   sync.Mutex
-		done   int
-		failed []mrFile
+		pg        sync.WaitGroup
+		modsErr   error
+		jarFile   string
+		loaderErr error
 	)
-	for _, f := range files {
-		wg.Add(1)
-		go func(f mrFile) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			label, err := dlOne(f)
-			prog.Lock()
-			done++
-			if err != nil {
-				failed = append(failed, f)
-				hub.Broadcast(fmt.Sprintf("[MCS] ✗ (%d/%d) %s 下载失败: %v（稍后自动重试）", done, len(files), label, err))
-			} else {
-				hub.Broadcast(fmt.Sprintf("[MCS] ✓ (%d/%d) %s", done, len(files), label))
-			}
-			hub.SetProgress(fmt.Sprintf("下载整合包文件 %d/%d", done, len(files)), int64(done), int64(len(files)))
-			prog.Unlock()
-		}(f)
+	pg.Add(2)
+	go func() {
+		defer pg.Done()
+		modsErr = downloadPackFiles()
+	}()
+	go func() {
+		defer pg.Done()
+		switch loaderType {
+		case "fabric":
+			jarFile, loaderErr = installFabricServer(dir, mc, idx.Dependencies["fabric-loader"], hub)
+		case "forge":
+			jarFile, loaderErr = m.installForgeLike(dir, "forge", mc, idx.Dependencies["forge"], hub)
+		case "neoforge":
+			jarFile, loaderErr = m.installForgeLike(dir, "neoforge", mc, idx.Dependencies["neoforge"], hub)
+		}
+	}()
+	pg.Wait()
+	if modsErr != nil {
+		hub.StepFail(stepPackFiles)
+		fail(modsErr.Error())
+		return
 	}
-	wg.Wait()
-
-	// 失败的文件在其他任务完成后串行重试一轮（放慢节奏，避开 CDN 风控/限流）
-	if len(failed) > 0 {
-		hub.Broadcast(fmt.Sprintf("[MCS] 首轮有 %d 个文件失败，等待 5 秒后逐个重试 ...", len(failed)))
-		time.Sleep(5 * time.Second)
-		var errs []string
-		for i, f := range failed {
-			hub.SetProgress(fmt.Sprintf("重试失败文件 %d/%d", i+1, len(failed)), int64(i+1), int64(len(failed)))
-			label, err := dlOne(f)
-			if err != nil {
-				errs = append(errs, fmt.Sprintf("%s: %v", label, err))
-				hub.Broadcast(fmt.Sprintf("[MCS] ✗ 重试 (%d/%d) %s 仍然失败: %v", i+1, len(failed), label, err))
-			} else {
-				hub.Broadcast(fmt.Sprintf("[MCS] ✓ 重试 (%d/%d) %s", i+1, len(failed), label))
-			}
-			time.Sleep(2 * time.Second)
-		}
-		if len(errs) > 0 {
-			hub.Broadcast(fmt.Sprintf("[MCS] 以下 %d 个文件重试后仍失败：", len(errs)))
-			for _, e := range errs {
-				hub.Broadcast("[MCS]   " + e)
-			}
-			fail(fmt.Sprintf("%d 个文件下载失败（明细见上方日志）", len(errs)))
-			return
-		}
-		hub.Broadcast("[MCS] 重试全部成功！")
+	if loaderErr != nil {
+		fail(loaderErr.Error())
+		return
 	}
 
-	// 1.5) 补齐缺失前置：整合包里的 mod 声明了 required 前置但作者没打进包时，
+	// 4) 补齐缺失前置：整合包里的 mod 声明了 required 前置但作者没打进包时，
 	// 沿 Modrinth 依赖图自动下载，避免启动报 Missing mandatory dependencies。
 	// 仅对 Modrinth 包生效（CurseForge 清单无依赖信息，files 里也没有 Modrinth 直链）。
 	if kind == "modrinth" {
-		depLoader := ""
-		switch {
-		case idx.Dependencies["fabric-loader"] != "":
-			depLoader = "fabric"
-		case idx.Dependencies["forge"] != "":
-			depLoader = "forge"
-		case idx.Dependencies["neoforge"] != "":
-			depLoader = "neoforge"
-		case idx.Dependencies["quilt-loader"] != "":
-			depLoader = "quilt"
-		}
-		resolveMissingDeps(dir, idx.Dependencies["minecraft"], depLoader, files, idx.Files, hub)
+		hub.StepRun(stepDeps)
+		resolveMissingDeps(dir, mc, loaderType, files, idx.Files, hub)
+		hub.StepDone(stepDeps)
 	}
 
-	// 2) 解压 overrides（server-overrides 优先级更高，后写覆盖）
-	for _, od := range overrideDirs {
-		prefix := root + strings.Trim(od, "/") + "/"
-		for _, zf := range zr.File {
-			if !strings.HasPrefix(zf.Name, prefix) || zf.FileInfo().IsDir() {
-				continue
-			}
-			rel := strings.TrimPrefix(zf.Name, prefix)
-			p, err := safeJoin(dir, rel)
-			if err != nil {
-				continue
-			}
-			os.MkdirAll(filepath.Dir(p), 0755)
-			rc, err := zf.Open()
-			if err != nil {
-				continue
-			}
-			out, err := os.Create(p)
-			if err != nil {
-				rc.Close()
-				continue
-			}
-			io.Copy(out, rc)
-			out.Close()
-			rc.Close()
-		}
-	}
-
-	// 3) 安装服务端加载器
-	mc := idx.Dependencies["minecraft"]
-	if mc == "" {
-		fail("整合包未声明 Minecraft 版本")
-		return
-	}
-	var jarFile, loaderType string
-	if lv, ok := idx.Dependencies["fabric-loader"]; ok {
-		loaderType = "fabric"
-		jarFile, err = installFabricServer(dir, mc, lv, hub)
-	} else if fv, ok := idx.Dependencies["forge"]; ok {
-		loaderType = "forge"
-		jarFile, err = m.installForgeLike(dir, "forge", mc, fv, hub)
-	} else if nv, ok := idx.Dependencies["neoforge"]; ok {
-		loaderType = "neoforge"
-		jarFile, err = m.installForgeLike(dir, "neoforge", mc, nv, hub)
-	} else if _, ok := idx.Dependencies["quilt-loader"]; ok {
-		err = fmt.Errorf("暂不支持 Quilt 服务端整合包")
-	} else {
-		err = fmt.Errorf("整合包未声明服务端加载器（fabric/forge/neoforge）")
-	}
-	if err != nil {
-		fail(err.Error())
-		return
-	}
-
+	hub.StepRun(stepConfig)
 	if err := writeServerFiles(dir, in.Port, in.Name); err != nil {
+		hub.StepFail(stepConfig)
 		fail(err.Error())
 		return
 	}
+	hub.StepDone(stepConfig)
 
 	m.mu.Lock()
 	in.Version = mc
@@ -915,11 +984,13 @@ func (m *Manager) installPackFromFile(in *Instance, rs *runtimeState, packPath s
 
 // installFabricServer downloads the single-jar Fabric server launcher.
 func installFabricServer(dir, mc, loader string, hub *ConsoleHub) (string, error) {
+	hub.StepRun(stepFabricMeta)
 	var installers []struct {
 		Version string `json:"version"`
 		Stable  bool   `json:"stable"`
 	}
 	if err := fetchJSON("https://meta.fabricmc.net/v2/versions/installer", &installers); err != nil {
+		hub.StepFail(stepFabricMeta)
 		return "", fmt.Errorf("获取 Fabric 安装器版本失败: %v", err)
 	}
 	inst := ""
@@ -933,15 +1004,19 @@ func installFabricServer(dir, mc, loader string, hub *ConsoleHub) (string, error
 		inst = installers[0].Version
 	}
 	if inst == "" {
+		hub.StepFail(stepFabricMeta)
 		return "", fmt.Errorf("Fabric 安装器版本列表为空")
 	}
 	u := fmt.Sprintf("https://meta.fabricmc.net/v2/versions/loader/%s/%s/%s/server/jar",
 		url.PathEscape(mc), url.PathEscape(loader), url.PathEscape(inst))
+	hub.StepDone(stepFabricMeta)
 	hub.Broadcast(fmt.Sprintf("[MCS] 正在下载 Fabric 服务端（Minecraft %s, loader %s）...", mc, loader))
 	jar := "fabric-server.jar"
-	if err := downloadWithProgress(u, filepath.Join(dir, jar), hub, "下载 Fabric 服务端"); err != nil {
+	if err := downloadWithProgress(u, filepath.Join(dir, jar), hub, stepFabricJar); err != nil {
+		hub.StepFail(stepFabricJar)
 		return "", fmt.Errorf("下载 Fabric 服务端失败: %v", err)
 	}
+	hub.StepDone(stepFabricJar)
 	return jar, nil
 }
 
@@ -985,11 +1060,8 @@ func javaProxyFlags() []string {
 }
 
 // installForgeLike downloads the Forge/NeoForge installer and runs --installServer.
+// Java 环境准备与安装器下载互不依赖，并行执行后再运行安装器。
 func (m *Manager) installForgeLike(dir, kind, mc, ver string, hub *ConsoleHub) (string, error) {
-	javaPath, err := m.ensureJavaFor(mc, hub)
-	if err != nil {
-		return "", err
-	}
 	var instURLs []string
 	var label string
 	if kind == "forge" {
@@ -1010,17 +1082,45 @@ func (m *Manager) installForgeLike(dir, kind, mc, ver string, hub *ConsoleHub) (
 		}
 	}
 	instJar := filepath.Join(dir, "installer.jar")
-	hub.Broadcast("[MCS] 正在下载 " + label + " 安装器 ...")
-	var dlErr error
-	for i, u := range instURLs {
-		src := "镜像源"
-		if i > 0 {
-			src = "官方源"
-			hub.Broadcast(fmt.Sprintf("[MCS] 镜像源下载失败（%v），改用官方源重试 ...", dlErr))
+
+	var (
+		fwg      sync.WaitGroup
+		javaPath string
+		javaErr  error
+		dlErr    error
+	)
+	fwg.Add(2)
+	go func() {
+		defer fwg.Done()
+		hub.StepRun(stepJava)
+		javaPath, javaErr = m.ensureJavaFor(mc, hub)
+		if javaErr != nil {
+			hub.StepFail(stepJava)
+		} else {
+			hub.StepDone(stepJava)
 		}
-		if dlErr = downloadWithProgress(u, instJar, hub, fmt.Sprintf("下载 %s 安装器（%s）", label, src)); dlErr == nil {
-			break
+	}()
+	go func() {
+		defer fwg.Done()
+		hub.StepRun(stepInstaller)
+		hub.Broadcast("[MCS] 正在下载 " + label + " 安装器 ...")
+		for i, u := range instURLs {
+			if i > 0 {
+				hub.Broadcast(fmt.Sprintf("[MCS] 镜像源下载失败（%v），改用官方源重试 ...", dlErr))
+			}
+			if dlErr = downloadWithProgress(u, instJar, hub, stepInstaller); dlErr == nil {
+				break
+			}
 		}
+		if dlErr != nil {
+			hub.StepFail(stepInstaller)
+		} else {
+			hub.StepDone(stepInstaller)
+		}
+	}()
+	fwg.Wait()
+	if javaErr != nil {
+		return "", javaErr
 	}
 	if dlErr != nil {
 		return "", fmt.Errorf("下载安装器失败（镜像与官方源均不可用）: %v", dlErr)
@@ -1030,6 +1130,7 @@ func (m *Manager) installForgeLike(dir, kind, mc, ver string, hub *ConsoleHub) (
 	if len(proxyFlags) > 0 {
 		hub.Broadcast("[MCS] 安装器将通过面板代理下载依赖库")
 	}
+	hub.StepRun(stepRunInstaller)
 	// 安装器偶发个别库下载超时，失败自动重试（已下载的库有校验缓存，重跑很快）
 	var lastErr error
 	for attempt := 1; attempt <= 2; attempt++ {
@@ -1037,16 +1138,18 @@ func (m *Manager) installForgeLike(dir, kind, mc, ver string, hub *ConsoleHub) (
 			hub.Broadcast("[MCS] 部分依赖库下载失败，自动重试安装（已下载部分不会重复下载）...")
 		}
 		hub.Broadcast("[MCS] 正在安装 " + label + " 服务端（安装器会下载依赖库，可能需要几分钟）...")
-		hub.SetProgress("安装 "+label+" 服务端（下载依赖库，需几分钟）...", 0, 0)
+		hub.SetProgress(stepRunInstaller, 0, 0)
 		args := append(append([]string{}, proxyFlags...), "-jar", "installer.jar", "--installServer")
 		cmd := hideWindow(exec.Command(javaPath, args...))
 		cmd.Dir = dir
 		out, err := cmd.StdoutPipe()
 		if err != nil {
+			hub.StepFail(stepRunInstaller)
 			return "", err
 		}
 		cmd.Stderr = cmd.Stdout
 		if err := cmd.Start(); err != nil {
+			hub.StepFail(stepRunInstaller)
 			return "", err
 		}
 		sc := bufio.NewScanner(out)
@@ -1066,6 +1169,7 @@ func (m *Manager) installForgeLike(dir, kind, mc, ver string, hub *ConsoleHub) (
 		break
 	}
 	if lastErr != nil {
+		hub.StepFail(stepRunInstaller)
 		return "", lastErr
 	}
 	os.Remove(instJar)
@@ -1073,14 +1177,17 @@ func (m *Manager) installForgeLike(dir, kind, mc, ver string, hub *ConsoleHub) (
 
 	// 新版：生成 run.bat / run.sh；旧版 Forge：universal jar 直接落在目录里
 	if _, err := os.Stat(filepath.Join(dir, runScriptName())); err == nil {
+		hub.StepDone(stepRunInstaller)
 		return runScriptName(), nil
 	}
 	if ms, _ := filepath.Glob(filepath.Join(dir, kind+"-*.jar")); len(ms) > 0 {
 		for _, p := range ms {
 			if !strings.Contains(filepath.Base(p), "installer") {
+				hub.StepDone(stepRunInstaller)
 				return filepath.Base(p), nil
 			}
 		}
 	}
+	hub.StepFail(stepRunInstaller)
 	return "", fmt.Errorf("安装器完成但未找到启动文件（run.bat 或 %s-*.jar）", kind)
 }

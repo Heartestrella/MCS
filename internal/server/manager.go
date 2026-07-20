@@ -58,6 +58,8 @@ type Instance struct {
 	DlDone     int64    `json:"dlDone,omitempty"`
 	DlTotal    int64    `json:"dlTotal,omitempty"`
 	DlSpeed    int64    `json:"dlSpeed,omitempty"` // 当前下载速度 B/s
+	InstallSteps []InstallStep `json:"installSteps,omitempty"` // 下载管理页的结构化步骤
+	DlFilesLeft  int           `json:"dlFilesLeft,omitempty"`  // 剩余待下载文件数
 	TPS        float64  `json:"tps,omitempty"`     // 1m TPS（Paper 系运行中）
 }
 
@@ -103,6 +105,7 @@ func NewManager(dataDir string) (*Manager, error) {
 	if err := m.load(); err != nil {
 		return nil, err
 	}
+	m.loadRemote()
 	m.applyProxyConfig(m.loadProxyConfig())
 	m.startAutoBackup()
 	m.startScheduledRestart()
@@ -252,6 +255,11 @@ func (m *Manager) snapshot(in *Instance) Instance {
 	if rs.status == "downloading" || rs.status == "starting" {
 		cp.DlLabel, cp.DlDone, cp.DlTotal = rs.console.Progress()
 		cp.DlSpeed = rs.console.Speed()
+		cp.InstallSteps = rs.console.Steps()
+		cp.DlFilesLeft = rs.console.FilesLeft()
+	} else if rs.status == "error" {
+		// 安装失败后下载管理页仍要展示哪一步失败
+		cp.InstallSteps = rs.console.Steps()
 	}
 	if (rs.status == "running" || rs.status == "starting") && !rs.startedAt.IsZero() {
 		cp.UptimeSec = int(time.Since(rs.startedAt).Seconds())

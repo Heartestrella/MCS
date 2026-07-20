@@ -206,7 +206,7 @@ func (m *Manager) ensureJavaMajor(major int, hub *ConsoleHub) (string, error) {
 	os.Remove(zipPath)
 
 	if p := findJavaIn(javaDir); p != "" {
-		hub.ClearProgress()
+		hub.SetProgress("", 0, 0) // 只清卡片进度标签，别动并行安装中的步骤列表
 		hub.Broadcast(fmt.Sprintf("[MCS] Java %d 就绪: %s", major, p))
 		m.notify(fmt.Sprintf("Java %d 自动安装完成", major),
 			fmt.Sprintf("面板已自动下载并安装 Temurin JRE %d：\n%s", major, p))

@@ -217,6 +217,7 @@ func paperVersions() ([]string, error) {
 
 // downloadPaper fetches the latest build jar for a version into dir, reporting progress lines to hub.
 func downloadPaper(version, dir string, hub *ConsoleHub) (string, error) {
+	hub.StepRun(stepCoreInfo)
 	var build struct {
 		ID        int    `json:"id"`
 		Channel   string `json:"channel"`
@@ -227,6 +228,7 @@ func downloadPaper(version, dir string, hub *ConsoleHub) (string, error) {
 		} `json:"downloads"`
 	}
 	if err := fetchJSON(fmt.Sprintf("%s/versions/%s/builds/latest", fillAPI, version), &build); err != nil {
+		hub.StepFail(stepCoreInfo)
 		return "", fmt.Errorf("获取构建信息失败: %w", err)
 	}
 	dl, ok := build.Downloads["server:default"]
@@ -237,8 +239,10 @@ func downloadPaper(version, dir string, hub *ConsoleHub) (string, error) {
 		}
 	}
 	if !ok || dl.URL == "" {
+		hub.StepFail(stepCoreInfo)
 		return "", fmt.Errorf("版本 %s 没有可下载的服务端", version)
 	}
+	hub.StepDone(stepCoreInfo)
 
 	hub.Broadcast(fmt.Sprintf("[MCS] 正在下载 Paper %s build %d (%.1f MB)...", version, build.ID, float64(dl.Size)/1e6))
 
@@ -246,10 +250,12 @@ func downloadPaper(version, dir string, hub *ConsoleHub) (string, error) {
 	req.Header.Set("User-Agent", "mcs-panel/1.0 (github.com/mcs-panel)")
 	resp, err := dlClient.Do(req)
 	if err != nil {
+		hub.StepFail(stepCoreJar)
 		return "", fmt.Errorf("下载失败: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
+		hub.StepFail(stepCoreJar)
 		return "", fmt.Errorf("下载失败: HTTP %d", resp.StatusCode)
 	}
 
@@ -262,9 +268,10 @@ func downloadPaper(version, dir string, hub *ConsoleHub) (string, error) {
 	if total <= 0 {
 		total = dl.Size
 	}
-	if _, err := copyWithProgress(f, resp.Body, total, hub, fmt.Sprintf("下载 Paper %s 核心", version)); err != nil {
+	if _, err := copyWithProgress(f, resp.Body, total, hub, stepCoreJar); err != nil {
 		f.Close()
 		os.Remove(tmp)
+		hub.StepFail(stepCoreJar)
 		return "", err
 	}
 	f.Close()
@@ -272,6 +279,7 @@ func downloadPaper(version, dir string, hub *ConsoleHub) (string, error) {
 	if err := os.Rename(tmp, final); err != nil {
 		return "", err
 	}
+	hub.StepDone(stepCoreJar)
 	hub.Broadcast("[MCS] 下载完成: " + dl.Name)
 	return dl.Name, nil
 }
@@ -299,23 +307,29 @@ func purpurVersions() ([]string, error) {
 
 // downloadPurpur fetches the latest Purpur build jar for a version into dir.
 func downloadPurpur(version, dir string, hub *ConsoleHub) (string, error) {
+	hub.StepRun(stepCoreInfo)
 	var info struct {
 		Builds struct {
 			Latest string `json:"latest"`
 		} `json:"builds"`
 	}
 	if err := fetchJSON(fmt.Sprintf("%s/%s", purpurAPI, version), &info); err != nil {
+		hub.StepFail(stepCoreInfo)
 		return "", fmt.Errorf("获取 Purpur 构建信息失败: %w", err)
 	}
 	if info.Builds.Latest == "" {
+		hub.StepFail(stepCoreInfo)
 		return "", fmt.Errorf("Purpur 没有 %s 的可用构建", version)
 	}
+	hub.StepDone(stepCoreInfo)
 	name := fmt.Sprintf("purpur-%s-%s.jar", version, info.Builds.Latest)
 	hub.Broadcast(fmt.Sprintf("[MCS] 正在下载 Purpur %s build %s ...", version, info.Builds.Latest))
 	u := fmt.Sprintf("%s/%s/%s/download", purpurAPI, version, info.Builds.Latest)
-	if err := downloadWithProgress(u, filepath.Join(dir, name), hub, fmt.Sprintf("下载 Purpur %s 核心", version)); err != nil {
+	if err := downloadWithProgress(u, filepath.Join(dir, name), hub, stepCoreJar); err != nil {
+		hub.StepFail(stepCoreJar)
 		return "", fmt.Errorf("下载 Purpur 失败: %w", err)
 	}
+	hub.StepDone(stepCoreJar)
 	hub.Broadcast("[MCS] 下载完成: " + name)
 	return name, nil
 }
