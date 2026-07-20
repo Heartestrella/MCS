@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,15 +12,83 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
-var dlClient = &http.Client{Timeout: 30 * time.Minute} // 大文件走代理可能很慢，超时放宽
+// dlClient 禁用 HTTP/2：Go 默认把同一域名的并发请求复用到一条 HTTP/2 连接上，
+// 并发下载 mod 时 16 路全挤在一条 TCP 连接里，被 CDN 按单连接限速后等于串行。
+// 改用 HTTP/1.1 让每个并发请求各占一条连接，才能真正跑满带宽。
+var dlClient = &http.Client{
+	Timeout: 30 * time.Minute, // 大文件走代理可能很慢，超时放宽
+	Transport: &http.Transport{
+		Proxy:               dlProxyFunc,
+		TLSNextProto:        map[string]func(string, *tls.Conn) http.RoundTripper{},
+		MaxIdleConns:        64,
+		MaxIdleConnsPerHost: 20,
+		IdleConnTimeout:     90 * time.Second,
+	},
+}
+
+// stallWindow: 连续这么久收不到任何数据就判定断流、中止传输，
+// 让上层尽快换源重试，而不是在被 CDN 掐死的连接上干等几分钟。
+const stallWindow = 30 * time.Second
+
+// stallBody wraps a response body and force-closes it when no data arrives
+// within stallWindow, failing the pending Read immediately.
+type stallBody struct {
+	rc      io.ReadCloser
+	last    atomic.Int64 // UnixNano of last data
+	stalled atomic.Bool
+	once    sync.Once
+	done    chan struct{}
+}
+
+func withStallAbort(rc io.ReadCloser) io.ReadCloser {
+	s := &stallBody{rc: rc, done: make(chan struct{})}
+	s.last.Store(time.Now().UnixNano())
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-s.done:
+				return
+			case <-t.C:
+				if time.Since(time.Unix(0, s.last.Load())) > stallWindow {
+					s.stalled.Store(true)
+					s.rc.Close() // 让阻塞中的 Read 立即报错
+					return
+				}
+			}
+		}
+	}()
+	return s
+}
+
+func (s *stallBody) Read(p []byte) (int, error) {
+	n, err := s.rc.Read(p)
+	if n > 0 {
+		s.last.Store(time.Now().UnixNano())
+	}
+	if err != nil && s.stalled.Load() {
+		err = fmt.Errorf("连续 %d 秒未收到数据，判定断流中止", int(stallWindow.Seconds()))
+	}
+	return n, err
+}
+
+func (s *stallBody) Close() error {
+	s.once.Do(func() { close(s.done) })
+	return s.rc.Close()
+}
 
 const fillAPI = "https://fill.papermc.io/v3/projects/paper"
 
 // copyWithProgress copies resp body to f, updating hub progress and broadcasting
-// console lines every ~10%. label is shown on the instance card progress bar.
+// console lines every ~10%. label is shown on the instance card progress bar;
+// label 为空表示静默模式：只累计字节数用于测速，不刷进度条/控制台
+// （并发下载 mod 时进度条按文件数显示，单文件进度会互相覆盖）。
 func copyWithProgress(f *os.File, body io.Reader, total int64, hub *ConsoleHub, label string) (int64, error) {
 	var written int64
 	buf := make([]byte, 256*1024)
@@ -32,11 +101,14 @@ func copyWithProgress(f *os.File, body io.Reader, total int64, hub *ConsoleHub, 
 				return written, werr
 			}
 			written += int64(n)
-			if hub != nil && time.Since(lastUpd) > 200*time.Millisecond {
+			if hub != nil {
+				hub.AddBytes(int64(n))
+			}
+			if hub != nil && label != "" && time.Since(lastUpd) > 200*time.Millisecond {
 				lastUpd = time.Now()
 				hub.SetProgress(label, written, total)
 			}
-			if hub != nil && total > 0 {
+			if hub != nil && label != "" && total > 0 {
 				pct := int(written * 100 / total)
 				if pct/10 > lastPct/10 {
 					lastPct = pct
@@ -45,7 +117,7 @@ func copyWithProgress(f *os.File, body io.Reader, total int64, hub *ConsoleHub, 
 			}
 		}
 		if rerr == io.EOF {
-			if hub != nil {
+			if hub != nil && label != "" {
 				hub.SetProgress(label, written, total)
 			}
 			return written, nil
@@ -73,7 +145,9 @@ func downloadWithProgress(rawURL, destPath string, hub *ConsoleHub, label string
 	if err != nil {
 		return err
 	}
-	if _, err := copyWithProgress(f, resp.Body, resp.ContentLength, hub, label); err != nil {
+	body := withStallAbort(resp.Body)
+	defer body.Close()
+	if _, err := copyWithProgress(f, body, resp.ContentLength, hub, label); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return err

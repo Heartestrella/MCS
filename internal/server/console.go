@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -24,6 +25,16 @@ type ConsoleHub struct {
 	dlLabel string
 	dlDone  int64
 	dlTotal int64
+
+	// 下载速度统计：所有并发下载协程通过 AddBytes 汇总字节数，
+	// 用近几秒的采样窗口算瞬时速度（B/s）
+	dlBytes   int64
+	dlSamples []dlSample
+}
+
+type dlSample struct {
+	at    time.Time
+	bytes int64
 }
 
 const (
@@ -62,6 +73,7 @@ func (h *ConsoleHub) SetProgress(label string, done, total int64) {
 func (h *ConsoleHub) ClearProgress() {
 	h.mu.Lock()
 	h.dlLabel, h.dlDone, h.dlTotal = "", 0, 0
+	h.dlBytes, h.dlSamples = 0, nil
 	h.mu.Unlock()
 }
 
@@ -69,6 +81,45 @@ func (h *ConsoleHub) Progress() (label string, done, total int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.dlLabel, h.dlDone, h.dlTotal
+}
+
+// speedWindow: 瞬时速度的采样窗口。太短数字乱跳，太长反应迟钝。
+const speedWindow = 5 * time.Second
+
+// AddBytes accumulates downloaded bytes from any goroutine for speed stats.
+// 采样按 100ms 分桶，窗口内最多几十个点，锁开销可忽略。
+func (h *ConsoleHub) AddBytes(n int64) {
+	now := time.Now()
+	h.mu.Lock()
+	h.dlBytes += n
+	if k := len(h.dlSamples); k == 0 || now.Sub(h.dlSamples[k-1].at) >= 100*time.Millisecond {
+		h.dlSamples = append(h.dlSamples, dlSample{at: now, bytes: h.dlBytes})
+		cut := 0
+		for cut < len(h.dlSamples)-1 && now.Sub(h.dlSamples[cut+1].at) > speedWindow {
+			cut++
+		}
+		h.dlSamples = h.dlSamples[cut:]
+	}
+	h.mu.Unlock()
+}
+
+// Speed returns the current download speed in bytes/sec (0 if idle or stalled).
+func (h *ConsoleHub) Speed() int64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.dlSamples) < 2 {
+		return 0
+	}
+	first, last := h.dlSamples[0], h.dlSamples[len(h.dlSamples)-1]
+	// 最近一次采样已是 3 秒前 → 下载停滞，速度归零
+	if time.Since(last.at) > 3*time.Second {
+		return 0
+	}
+	dur := last.at.Sub(first.at).Seconds()
+	if dur <= 0 {
+		return 0
+	}
+	return int64(float64(last.bytes-first.bytes) / dur)
 }
 
 const historyMax = 500

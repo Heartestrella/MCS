@@ -99,29 +99,29 @@ func (cf cfManifest) toIndex() mrIndex {
 	return idx
 }
 
-// cfDownloadMod downloads one CurseForge mod into destDir/mods/, resolving the
-// real filename from the CDN redirect (fallback: cfwidget metadata + CDN 规则).
+// cfDownloadMod downloads one CurseForge mod into destDir/mods/.
+// 首选 MCIM 镜像解析文件名 + CDN 镜像下载（国内可直连）；失败回退
+// CurseForge 官网直链（302 到带真实文件名的 CDN 地址）。hub 用于测速统计。
 // 返回实际保存的文件名；失败时错误里带上两条下载路径各自的原因，方便排查。
-func cfDownloadMod(projectID, fileID int, destDir string) (string, error) {
+func cfDownloadMod(projectID, fileID int, destDir string, hub *ConsoleHub) (string, error) {
 	direct := fmt.Sprintf("https://www.curseforge.com/api/v1/mods/%d/files/%d/download", projectID, fileID)
-	name, directErr := downloadWithServerName(direct, filepath.Join(destDir, "mods"))
-	if directErr == nil {
-		return name, nil
+	mf, mirrorErr := cfResolveFile(projectID, fileID)
+	if mirrorErr == nil {
+		dest, err := safeJoin(destDir, mf.Path)
+		if err != nil {
+			return "", err
+		}
+		os.MkdirAll(filepath.Dir(dest), 0755)
+		if mirrorErr = downloadToHub(mf.Downloads[0], dest, hub, ""); mirrorErr == nil {
+			return filepath.Base(dest), nil
+		}
 	}
-	// 兜底：cfwidget 查文件名 + forgecdn 直链
-	mf, err := cfResolveFile(projectID, fileID)
-	if err != nil {
-		return "", fmt.Errorf("官网直链失败（%v）；cfwidget 兜底失败（%v）。可在浏览器打开 %s 手动下载后放入 mods 文件夹", directErr, err, direct)
+	// 兜底：官网直链（需要伪装浏览器请求，国内不一定通）
+	name, directErr := downloadWithServerName(direct, filepath.Join(destDir, "mods"), hub)
+	if directErr != nil {
+		return "", fmt.Errorf("镜像下载失败（%v）；官网直链失败（%v）。可在浏览器打开 %s 手动下载后放入 mods 文件夹", mirrorErr, directErr, direct)
 	}
-	dest, err := safeJoin(destDir, mf.Path)
-	if err != nil {
-		return "", err
-	}
-	os.MkdirAll(filepath.Dir(dest), 0755)
-	if err := downloadTo(mf.Downloads[0], dest); err != nil {
-		return "", fmt.Errorf("官网直链失败（%v）；CDN 兜底 %s 失败（%v）", directErr, mf.Downloads[0], err)
-	}
-	return filepath.Base(dest), nil
+	return name, nil
 }
 
 // browserUA: CurseForge 官网直链会 403 拒绝非浏览器 UA，必须伪装
@@ -129,8 +129,8 @@ const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 
 // downloadWithServerName GETs a URL (following redirects) and saves it into dir,
 // naming the file from Content-Disposition or the final redirected URL.
-// Returns the saved filename.
-func downloadWithServerName(rawURL, dir string) (string, error) {
+// hub 用于测速统计（可为 nil）。Returns the saved filename.
+func downloadWithServerName(rawURL, dir string, hub *ConsoleHub) (string, error) {
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return "", err
@@ -176,11 +176,13 @@ func downloadWithServerName(rawURL, dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, err = io.Copy(f, resp.Body)
+	body := withStallAbort(resp.Body)
+	defer body.Close()
+	written, err := copyWithProgress(f, body, resp.ContentLength, hub, "")
 	f.Close()
 	if err != nil {
 		os.Remove(tmp)
-		return "", err
+		return "", fmt.Errorf("传输中断（最终地址 %s，已接收 %.1f MB）: %w", resp.Request.URL, float64(written)/1e6, err)
 	}
 	if err := os.Rename(tmp, dest); err != nil {
 		return "", err
@@ -188,9 +190,27 @@ func downloadWithServerName(rawURL, dir string) (string, error) {
 	return name, nil
 }
 
-// cfResolveFile gets filename + download URL for a CurseForge projectID/fileID
-// via the api.cfwidget.com public mirror (no API key required).
+// cfResolveFile gets filename + download URL for a CurseForge projectID/fileID.
+// 首选 MCIM 镜像的 CurseForge API（免 key、国内直连快），失败回退 cfwidget。
 func cfResolveFile(projectID, fileID int) (mrFile, error) {
+	var mcim struct {
+		Data struct {
+			FileName    string `json:"fileName"`
+			DownloadURL string `json:"downloadUrl"`
+		} `json:"data"`
+	}
+	mcimErr := fetchJSON(fmt.Sprintf("https://mod.mcimirror.top/curseforge/v1/mods/%d/files/%d", projectID, fileID), &mcim)
+	if mcimErr == nil && mcim.Data.FileName != "" {
+		dl := mcim.Data.DownloadURL
+		if dl == "" {
+			dl = fmt.Sprintf("https://mediafilez.forgecdn.net/files/%d/%d/%s",
+				fileID/1000, fileID%1000, url.PathEscape(mcim.Data.FileName))
+		}
+		return mrFile{
+			Path:      "mods/" + mcim.Data.FileName,
+			Downloads: []string{dl},
+		}, nil
+	}
 	var meta struct {
 		Files []struct {
 			ID   int    `json:"id"`
@@ -198,7 +218,7 @@ func cfResolveFile(projectID, fileID int) (mrFile, error) {
 		} `json:"files"`
 	}
 	if err := fetchJSON(fmt.Sprintf("https://api.cfwidget.com/%d", projectID), &meta); err != nil {
-		return mrFile{}, err
+		return mrFile{}, fmt.Errorf("MCIM 镜像（%v）与 cfwidget（%v）均查询失败", mcimErr, err)
 	}
 	name := ""
 	for _, f := range meta.Files {
@@ -237,8 +257,78 @@ func safeJoin(base, rel string) (string, error) {
 	return filepath.Join(base, rel), nil
 }
 
-// downloadTo fetches a URL into dest atomically (.part + rename).
+// mirrorHosts: MCIM 国内镜像（https://mcimirror.top）对应的加速域名。
+// 命中这些域名的下载先走镜像、失败自动回退官方源。
+var mirrorHosts = map[string]string{
+	"cdn.modrinth.com":        "mod.mcimirror.top",
+	"mediafilez.forgecdn.net": "mod.mcimirror.top",
+	"edge.forgecdn.net":       "mod.mcimirror.top",
+}
+
+// candidateURLs returns download URLs in preference order: MCIM mirror first,
+// original second. URLs on other hosts pass through unchanged.
+func candidateURLs(rawURL string) []string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return []string{rawURL}
+	}
+	mh, ok := mirrorHosts[u.Host]
+	if !ok {
+		return []string{rawURL}
+	}
+	mu := *u
+	mu.Host = mh
+	return []string{mu.String(), rawURL}
+}
+
+// downloadTo fetches a URL into dest atomically，有镜像的源自动做
+// 镜像→官方双源切换，全部失败才报错（错误里带两边各自的原因）。
 func downloadTo(rawURL, dest string) error {
+	return downloadToHub(rawURL, dest, nil, "")
+}
+
+// downloadToHub is downloadTo with optional console logging: hub 非空且 label
+// 非空时，每个下载源的尝试、重定向后的最终地址、进度和失败明细都会打到控制台；
+// label 为空则静默（只累计字节数用于测速），供并发下载 mod 时使用。
+func downloadToHub(rawURL, dest string, hub *ConsoleHub, label string) error {
+	urls := candidateURLs(rawURL)
+	verbose := hub != nil && label != ""
+	var errs []string
+	for i, u := range urls {
+		src := ""
+		if len(urls) > 1 {
+			src = "MCIM 镜像"
+			if i > 0 {
+				src = "官方源"
+			}
+		}
+		if verbose {
+			if src != "" {
+				hub.Broadcast(fmt.Sprintf("[MCS] %s：尝试%s %s", label, src, u))
+			} else {
+				hub.Broadcast(fmt.Sprintf("[MCS] %s：%s", label, u))
+			}
+		}
+		err := downloadToOne(u, dest, hub, label)
+		if err == nil {
+			return nil
+		}
+		if src != "" {
+			errs = append(errs, fmt.Sprintf("%s：%v", src, err))
+		} else {
+			errs = append(errs, err.Error())
+		}
+		if verbose && i < len(urls)-1 {
+			hub.Broadcast(fmt.Sprintf("[MCS] %s：%s失败（%v），切换下一个源 ...", label, src, err))
+		}
+	}
+	return fmt.Errorf("%s", strings.Join(errs, "；"))
+}
+
+// downloadToOne fetches one URL into dest atomically (.part + rename).
+// 错误信息带重定向后的最终地址、已接收字节数与耗时，方便定位是哪个 CDN 在断连。
+func downloadToOne(rawURL, dest string, hub *ConsoleHub, label string) error {
+	start := time.Now()
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return err
@@ -246,22 +336,36 @@ func downloadTo(rawURL, dest string) error {
 	req.Header.Set("User-Agent", "mcs-panel/1.0")
 	resp, err := dlClient.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("连接失败（%.1fs）: %w", time.Since(start).Seconds(), err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	finalURL := rawURL
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalURL = resp.Request.URL.String()
 	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("HTTP %d（最终地址 %s）", resp.StatusCode, finalURL)
+	}
+	if hub != nil && label != "" && finalURL != rawURL {
+		hub.Broadcast(fmt.Sprintf("[MCS] %s：重定向至 %s", label, finalURL))
+	}
+	body := withStallAbort(resp.Body)
+	defer body.Close()
 	tmp := dest + ".part"
 	f, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(f, resp.Body)
+	written, err := copyWithProgress(f, body, resp.ContentLength, hub, label)
 	f.Close()
 	if err != nil {
 		os.Remove(tmp)
-		return err
+		total := "未知大小"
+		if resp.ContentLength > 0 {
+			total = fmt.Sprintf("%.1f MB", float64(resp.ContentLength)/1e6)
+		}
+		return fmt.Errorf("传输中断（最终地址 %s，已接收 %.1f MB / %s，耗时 %.1fs）: %w",
+			finalURL, float64(written)/1e6, total, time.Since(start).Seconds(), err)
 	}
 	return os.Rename(tmp, dest)
 }
@@ -392,9 +496,9 @@ func (m *Manager) installModpack(in *Instance, rs *runtimeState, packURL string)
 	dir := m.instDir(in.ID)
 	hub := rs.console
 
-	hub.Broadcast("[MCS] 正在下载整合包文件 ...")
+	hub.Broadcast("[MCS] 正在下载整合包文件（优先 MCIM 国内镜像，失败自动切官方源）...")
 	packPath := filepath.Join(dir, "pack.mrpack")
-	if err := downloadTo(packURL, packPath); err != nil {
+	if err := downloadToHub(packURL, packPath, hub, "下载整合包"); err != nil {
 		m.mu.Lock()
 		rs.status = "error"
 		rs.errMsg = "下载整合包失败: " + err.Error()
@@ -405,6 +509,155 @@ func (m *Manager) installModpack(in *Instance, rs *runtimeState, packURL string)
 	}
 	defer os.Remove(packPath)
 	m.installPackFromFile(in, rs, packPath)
+}
+
+// mrVersion 是 Modrinth version 对象的子集，够用来解析依赖与取下载文件。
+type mrVersion struct {
+	ID           string   `json:"id"`
+	ProjectID    string   `json:"project_id"`
+	GameVersions []string `json:"game_versions"`
+	Loaders      []string `json:"loaders"`
+	Dependencies []struct {
+		ProjectID      string `json:"project_id"`
+		VersionID      string `json:"version_id"`
+		DependencyType string `json:"dependency_type"`
+	} `json:"dependencies"`
+	Files []struct {
+		URL      string `json:"url"`
+		Filename string `json:"filename"`
+		Primary  bool   `json:"primary"`
+		Size     int64  `json:"size"`
+	} `json:"files"`
+}
+
+// primaryFile 返回 version 的主文件（无主文件时取第一个）。
+func (v mrVersion) primaryFile() (rawURL, filename string) {
+	for _, f := range v.Files {
+		if f.Primary || rawURL == "" {
+			rawURL, filename = f.URL, f.Filename
+		}
+	}
+	return
+}
+
+// modrinthIDsFromURL 从形如 /data/{project}/versions/{version}/{file} 的
+// cdn.modrinth.com 直链里取出 (projectID, versionID)；非此形式返回空串。
+func modrinthIDsFromURL(rawURL string) (string, string) {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host != "cdn.modrinth.com" {
+		return "", ""
+	}
+	p := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(p) >= 4 && p[0] == "data" && p[2] == "versions" {
+		return p[1], p[3]
+	}
+	return "", ""
+}
+
+// resolveMissingDeps 沿整合包已装 mod 的依赖图，把"某个 mod 需要前置、但整合包
+// 没带"的 required 前置补下载进 dir/mods，避免启动报 Missing mandatory dependencies。
+// 尽力而为：单个前置解析/下载失败只记日志并跳过，绝不中断整包安装。
+// installed 是本次实际下载的服务端文件（作为 BFS 起点），all 是清单里全部文件
+// （用来判断某前置是否已被整合包带上，避免重复下载）。
+func resolveMissingDeps(dir, mc, loader string, installed, all []mrFile, hub *ConsoleHub) {
+	if loader == "" || mc == "" {
+		return
+	}
+	have := map[string]bool{} // 已满足的 project id（整合包已带的）
+	for _, f := range all {
+		if len(f.Downloads) > 0 {
+			if pid, _ := modrinthIDsFromURL(f.Downloads[0]); pid != "" {
+				have[pid] = true
+			}
+		}
+	}
+	seen := map[string]bool{} // 已处理依赖的 version id，防环
+	var queue []string
+	for _, f := range installed {
+		if len(f.Downloads) > 0 {
+			if _, vid := modrinthIDsFromURL(f.Downloads[0]); vid != "" {
+				queue = append(queue, vid)
+			}
+		}
+	}
+
+	gameFacet, _ := json.Marshal([]string{mc})
+	loaderFacet, _ := json.Marshal([]string{loader})
+
+	added := 0
+	for len(queue) > 0 && added < 100 {
+		vid := queue[0]
+		queue = queue[1:]
+		if seen[vid] {
+			continue
+		}
+		seen[vid] = true
+
+		var v mrVersion
+		if err := modrinthGet("/version/"+url.PathEscape(vid), &v); err != nil {
+			continue
+		}
+		for _, d := range v.Dependencies {
+			if d.DependencyType != "required" {
+				continue
+			}
+			var dep mrVersion
+			switch {
+			case d.VersionID != "":
+				if err := modrinthGet("/version/"+url.PathEscape(d.VersionID), &dep); err != nil {
+					continue
+				}
+			case d.ProjectID != "":
+				if have[d.ProjectID] {
+					continue
+				}
+				path := fmt.Sprintf("/project/%s/version?game_versions=%s&loaders=%s",
+					url.PathEscape(d.ProjectID), url.QueryEscape(string(gameFacet)), url.QueryEscape(string(loaderFacet)))
+				var vers []mrVersion
+				if err := modrinthGet(path, &vers); err != nil || len(vers) == 0 {
+					continue
+				}
+				dep = vers[0] // Modrinth 按发布时间倒序，取最新匹配版本
+			default:
+				continue
+			}
+			// 已满足则只追踪它的传递依赖，不重复下载
+			if dep.ProjectID != "" && have[dep.ProjectID] {
+				queue = append(queue, dep.ID)
+				continue
+			}
+			du, dfn := dep.primaryFile()
+			if du == "" || dfn == "" {
+				continue
+			}
+			fu, err := url.Parse(du)
+			if err != nil || fu.Scheme != "https" || !packDownloadHosts[fu.Host] {
+				continue
+			}
+			dest, err := safeJoin(dir, "mods/"+dfn)
+			if err != nil {
+				continue
+			}
+			os.MkdirAll(filepath.Dir(dest), 0755)
+			if dep.ProjectID != "" {
+				have[dep.ProjectID] = true
+			}
+			queue = append(queue, dep.ID)
+			if _, statErr := os.Stat(dest); statErr == nil {
+				continue // 整合包已带同名文件
+			}
+			hub.Broadcast(fmt.Sprintf("[MCS] 检测到缺失前置：%s，正在补下载 ...", dfn))
+			if err := downloadToHub(du, dest, hub, ""); err != nil {
+				hub.Broadcast(fmt.Sprintf("[MCS] ✗ 前置 %s 下载失败: %v", dfn, err))
+				continue
+			}
+			hub.Broadcast(fmt.Sprintf("[MCS] ✓ 已补齐前置 %s", dfn))
+			added++
+		}
+	}
+	if added > 0 {
+		hub.Broadcast(fmt.Sprintf("[MCS] 共补齐 %d 个缺失前置模组", added))
+	}
 }
 
 // installPackFromFile installs a local pack archive (Modrinth mrpack or
@@ -498,10 +751,11 @@ func (m *Manager) installPackFromFile(in *Instance, rs *runtimeState, packPath s
 	}
 	hub.Broadcast(fmt.Sprintf("[MCS] 整合包「%s」共 %d 个文件需下载（已跳过 %d 个仅客户端/可选文件）", idx.Name, len(files), skipped))
 
-	// dlOne 下载单个整合包文件，返回用于日志的标签（成功时为落盘路径）
+	// dlOne 下载单个整合包文件，返回用于日志的标签（成功时为落盘路径）。
+	// 传 hub 但 label 为空：不刷单文件进度（并发时会互相覆盖），只累计测速字节
 	dlOne := func(f mrFile) (string, error) {
 		if f.CFProject > 0 {
-			name, err := cfDownloadMod(f.CFProject, f.CFFile, dir)
+			name, err := cfDownloadMod(f.CFProject, f.CFFile, dir, hub)
 			if err != nil {
 				return fmt.Sprintf("CurseForge %d/%d", f.CFProject, f.CFFile), err
 			}
@@ -512,12 +766,12 @@ func (m *Manager) installPackFromFile(in *Instance, rs *runtimeState, packPath s
 			return f.Path, err
 		}
 		os.MkdirAll(filepath.Dir(dest), 0755)
-		return f.Path, downloadTo(f.Downloads[0], dest)
+		return f.Path, downloadToHub(f.Downloads[0], dest, hub, "")
 	}
 
 	var (
 		wg     sync.WaitGroup
-		sem    = make(chan struct{}, 7)
+		sem    = make(chan struct{}, 16)
 		prog   sync.Mutex
 		done   int
 		failed []mrFile
@@ -568,6 +822,24 @@ func (m *Manager) installPackFromFile(in *Instance, rs *runtimeState, packPath s
 			return
 		}
 		hub.Broadcast("[MCS] 重试全部成功！")
+	}
+
+	// 1.5) 补齐缺失前置：整合包里的 mod 声明了 required 前置但作者没打进包时，
+	// 沿 Modrinth 依赖图自动下载，避免启动报 Missing mandatory dependencies。
+	// 仅对 Modrinth 包生效（CurseForge 清单无依赖信息，files 里也没有 Modrinth 直链）。
+	if kind == "modrinth" {
+		depLoader := ""
+		switch {
+		case idx.Dependencies["fabric-loader"] != "":
+			depLoader = "fabric"
+		case idx.Dependencies["forge"] != "":
+			depLoader = "forge"
+		case idx.Dependencies["neoforge"] != "":
+			depLoader = "neoforge"
+		case idx.Dependencies["quilt-loader"] != "":
+			depLoader = "quilt"
+		}
+		resolveMissingDeps(dir, idx.Dependencies["minecraft"], depLoader, files, idx.Files, hub)
 	}
 
 	// 2) 解压 overrides（server-overrides 优先级更高，后写覆盖）
@@ -677,23 +949,34 @@ func installFabricServer(dir, mc, loader string, hub *ConsoleHub) (string, error
 // system properties, so installer subprocesses (which ignore env proxies)
 // can download libraries through the same proxy.
 func javaProxyFlags() []string {
-	raw := os.Getenv("HTTPS_PROXY")
-	if raw == "" {
-		raw = os.Getenv("https_proxy")
-	}
-	if raw == "" {
-		raw = os.Getenv("HTTP_PROXY")
-	}
-	if raw == "" {
-		return nil
-	}
-	u, err := url.Parse(raw)
-	if err != nil || u.Hostname() == "" {
-		return nil
+	// 优先用面板配置的下载代理，未配置再回退环境变量
+	var u *url.URL
+	if p := dlProxy.Load(); p != nil {
+		u = p
+	} else {
+		raw := os.Getenv("HTTPS_PROXY")
+		if raw == "" {
+			raw = os.Getenv("https_proxy")
+		}
+		if raw == "" {
+			raw = os.Getenv("HTTP_PROXY")
+		}
+		if raw == "" {
+			return nil
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Hostname() == "" {
+			return nil
+		}
+		u = parsed
 	}
 	host, port := u.Hostname(), u.Port()
 	if port == "" {
 		port = "80"
+	}
+	// SOCKS 代理走 socksProxyHost；HTTP(S) 代理走 http(s).proxyHost
+	if strings.HasPrefix(u.Scheme, "socks") {
+		return []string{"-DsocksProxyHost=" + host, "-DsocksProxyPort=" + port}
 	}
 	return []string{
 		"-Dhttp.proxyHost=" + host, "-Dhttp.proxyPort=" + port,

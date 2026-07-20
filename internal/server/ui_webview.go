@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"unsafe"
 
 	webview2 "github.com/jchv/go-webview2"
 	"golang.org/x/sys/windows"
@@ -45,6 +46,46 @@ func runFrontend(url string) {
 	openWindow(url)
 }
 
+// Win32 窗口改造 + 自绘标题栏支持。
+// 隐藏系统标题栏用 Windows Terminal 同款做法：窗口样式原样保留
+// （最小化动画 / Aero Snap 不受影响），子类化窗口过程后在
+// WM_NCCALCSIZE 里把客户区顶边还原到窗口最顶端，系统标题栏连同
+// 顶部残留的边框线一起消失。标题栏由前端画（web/index.html
+// #guiBar），通过 Bind 的 _mcs* 函数控制窗口。
+const (
+	gwlpWndproc    = 0xFFFFFFFC // GWLP_WNDPROC(-4)，callee 按 32 位读取
+	wmNCCalcSize   = 0x0083
+	swpNoSize      = 0x0001
+	swpNoMove      = 0x0002
+	swpNoZOrder    = 0x0004
+	swpFrameChange = 0x0020
+	wmClose        = 0x0010
+	wmNCLBtnDown   = 0x00A1
+	htCaption      = 2
+	htTop          = 12
+	swMaximize     = 3
+	swMinimize     = 6
+	swRestore      = 9
+
+	smCySizeFrame    = 33
+	smCxPaddedBorder = 92
+)
+
+var (
+	user32            = windows.NewLazySystemDLL("user32.dll")
+	pSetWindowLong    = user32.NewProc("SetWindowLongPtrW")
+	pCallWindowProc   = user32.NewProc("CallWindowProcW")
+	pSetWindowPos     = user32.NewProc("SetWindowPos")
+	pReleaseCapture   = user32.NewProc("ReleaseCapture")
+	pSendMessage      = user32.NewProc("SendMessageW")
+	pPostMessage      = user32.NewProc("PostMessageW")
+	pIsZoomed         = user32.NewProc("IsZoomed")
+	pShowWindow       = user32.NewProc("ShowWindow")
+	pGetSystemMetrics = user32.NewProc("GetSystemMetrics")
+)
+
+type w32Rect struct{ Left, Top, Right, Bottom int32 }
+
 func openWindow(url string) {
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus: true,
@@ -54,6 +95,7 @@ func openWindow(url string) {
 			Width:  1280,
 			Height: 820,
 			Center: true,
+			IconId: 1, // rsrc_windows_*.syso 里的 RT_GROUP_ICON #1（web/logo.ico）
 		},
 	})
 	if w == nil {
@@ -62,6 +104,62 @@ func openWindow(url string) {
 		return
 	}
 	defer w.Destroy()
+
+	hwnd := uintptr(w.Window())
+
+	// 子类化：只拦 WM_NCCALCSIZE，其余照旧交给库的窗口过程
+	var origProc uintptr
+	frameless := windows.NewCallback(func(h, msg, wp, lp uintptr) uintptr {
+		if msg == wmNCCalcSize && wp != 0 {
+			// lp 指向 NCCALCSIZE_PARAMS，首个成员即建议客户区 RECT
+			rc := (*w32Rect)(unsafe.Pointer(lp))
+			top := rc.Top
+			pCallWindowProc.Call(origProc, h, msg, wp, lp)
+			rc.Top = top // 顶边不留给系统标题栏；左/右/下保留缩放边框
+			if z, _, _ := pIsZoomed.Call(h); z != 0 {
+				// 最大化时窗口会越出屏幕一个边框厚度，把顶边缩回来
+				cy, _, _ := pGetSystemMetrics.Call(smCySizeFrame)
+				pad, _, _ := pGetSystemMetrics.Call(smCxPaddedBorder)
+				rc.Top += int32(cy + pad)
+			}
+			return 0
+		}
+		r, _, _ := pCallWindowProc.Call(origProc, h, msg, wp, lp)
+		return r
+	})
+	origProc, _, _ = pSetWindowLong.Call(hwnd, gwlpWndproc, frameless)
+	pSetWindowPos.Call(hwnd, 0, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoZOrder|swpFrameChange)
+
+	// 页面加载前注入标记，前端据此显示自绘标题栏
+	w.Init("window._mcsGui = true")
+	_ = w.Bind("_mcsMin", func() { pShowWindow.Call(hwnd, swMinimize) })
+	_ = w.Bind("_mcsMax", func() {
+		if z, _, _ := pIsZoomed.Call(hwnd); z != 0 {
+			pShowWindow.Call(hwnd, swRestore)
+		} else {
+			pShowWindow.Call(hwnd, swMaximize)
+		}
+	})
+	_ = w.Bind("_mcsZoomed", func() bool {
+		z, _, _ := pIsZoomed.Call(hwnd)
+		return z != 0
+	})
+	_ = w.Bind("_mcsClose", func() { pPostMessage.Call(hwnd, wmClose, 0, 0) })
+	_ = w.Bind("_mcsDrag", func() {
+		// 交还鼠标捕获后伪造非客户区按下，让系统接管窗口拖动
+		// （drag 期间 Aero Snap / 贴边分屏都可用）
+		pReleaseCapture.Call()
+		pSendMessage.Call(hwnd, wmNCLBtnDown, htCaption, 0)
+	})
+	_ = w.Bind("_mcsResizeTop", func() {
+		// 客户区扩到窗口顶端后系统顶边缩放热区消失，前端顶部细条触发
+		if z, _, _ := pIsZoomed.Call(hwnd); z != 0 {
+			return
+		}
+		pReleaseCapture.Call()
+		pSendMessage.Call(hwnd, wmNCLBtnDown, htTop, 0)
+	})
+
 	w.Navigate(url)
 	w.Run()
 }

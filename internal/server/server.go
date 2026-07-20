@@ -127,6 +127,11 @@ func Run() {
 	mux.HandleFunc("GET /api/system", mgr.handleSystem)
 	mux.HandleFunc("GET /api/stats", mgr.handleSystemStats)
 
+	// 下载代理
+	mux.HandleFunc("GET /api/proxy", mgr.handleProxyGet)
+	mux.HandleFunc("POST /api/proxy", mgr.handleProxySet)
+	mux.HandleFunc("POST /api/proxy/test", mgr.handleProxyTest)
+
 	// 邮件通知
 	mux.HandleFunc("GET /api/mail", mgr.handleMailGet)
 	mux.HandleFunc("POST /api/mail", mgr.handleMailSet)

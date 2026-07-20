@@ -4,6 +4,11 @@ rem   mcs-panel.exe      - pure server (console window; for headless / remote / 
 rem   mcs-panel-gui.exe  - windowed (no console; panel UI embedded via WebView2, closing the window exits)
 cd /d "%~dp0"
 
+echo [0/2] embed icon resources (go-winres)...
+pushd cmd\mcs-panel
+go tool go-winres make --arch amd64,arm64 --in winres\winres.json || (popd & exit /b 1)
+popd
+
 echo [1/2] build mcs-panel.exe (server)...
 go build -trimpath -ldflags="-s -w" -o mcs-panel.exe ./cmd/mcs-panel || exit /b 1
 

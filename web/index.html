@@ -44,6 +44,41 @@
   .page { display: none; }
   .page.show { display: block; }
 
+  /* ===== GUI 窗口自绘标题栏（仅 WebView2 窗口模式显示，见 ui_webview.go） ===== */
+  #guiBar {
+    display: none; position: fixed; top: 0; left: 0; right: 0; height: 36px; z-index: 300;
+    align-items: center; gap: 10px; padding-left: 14px; user-select: none;
+    background: rgba(13,11,30,.82); backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255,255,255,.07);
+  }
+  body.gui #guiBar { display: flex; }
+  body.gui { padding-top: 36px; }
+  #guiBar .gb-logo { width: 18px; height: 18px; flex: none; }
+  #guiBar .gb-title { font-size: 12px; color: #9a96b8; letter-spacing: .5px; }
+  #guiBar .gb-title b { color: #e6e4f0; font-weight: 600; }
+  #guiBar .gb-btns { margin-left: auto; display: flex; align-self: stretch; }
+  #guiBar .gb-btns button {
+    width: 46px; border: none; background: none; cursor: pointer;
+    color: #9a96b8; font-size: 15px; font-family: inherit; line-height: 1;
+    transition: background .12s, color .12s;
+  }
+  #guiBar .gb-btns button:hover { background: rgba(255,255,255,.08); color: #fff; }
+  #guiBar .gb-btns .gb-close:hover { background: #e81123; color: #fff; }
+  /* 客户区扩到窗口顶端后系统顶边缩放热区没了，用一条细热区补上
+     （右侧避开窗口按钮，保证贴角快速点关闭不被抢） */
+  #guiResizeN { display: none; position: fixed; top: 0; left: 0; right: 140px; height: 5px; z-index: 301; cursor: n-resize; }
+  body.gui:not(.max) #guiResizeN { display: block; }
+
+  /* ===== 滚动条（WebView2 / Chromium 全局自绘，配色随面板）
+     轨道必须不透明：根滚动条的透明轨道会露出浏览器默认白底 ===== */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: #0d0b1e; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.16); border-radius: 8px;
+    border: 2px solid #0d0b1e; background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.3); background-clip: padding-box; }
+
   /* ===== 主页：顶部问候栏 + 左世界列表 / 右状态栏 ===== */
   .home-head {
     display: flex; align-items: flex-end; justify-content: space-between;
@@ -350,8 +385,8 @@
   }
   .console-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
   .console-head h2 { margin: 0; flex: 1; }
-  .console-head .close { cursor: pointer; color: #9a96b8; font-size: 22px; padding: 4px 10px; background: none; border: none; }
-  .console-head .close:hover { color: #fff; }
+  .console-head .close, .panel-x { cursor: pointer; color: #9a96b8; font-size: 22px; padding: 4px 10px; background: none; border: none; }
+  .console-head .close:hover, .panel-x:hover { color: #fff; }
   .console-out {
     height: 420px; overflow-y: auto;
     background: #0a0918; border: 1px solid rgba(255,255,255,.08);
@@ -451,6 +486,21 @@
 </style>
 </head>
 <body>
+  <!-- GUI 窗口自绘标题栏：系统标题栏已在 ui_webview.go 里去掉 -->
+  <div id="guiBar" onmousedown="guiDrag(event)">
+    <svg class="gb-logo" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <polygon points="32,6 56,19 32,32 8,19" fill="#34d399"/>
+      <polygon points="8,19 32,32 32,58 8,45" fill="#4a7dff"/>
+      <polygon points="56,19 32,32 32,58 56,45" fill="#33377e"/>
+    </svg>
+    <span class="gb-title"><b>MCS Space</b> · Minecraft 开服面板</span>
+    <div class="gb-btns" onmousedown="event.stopPropagation()">
+      <button title="最小化" onclick="_mcsMin()">─</button>
+      <button title="最大化 / 还原" id="guiMaxBtn" onclick="guiMax()">□</button>
+      <button class="gb-close" title="关闭（服务器一并退出）" onclick="_mcsClose()">×</button>
+    </div>
+  </div>
+  <div id="guiResizeN" onmousedown="if(event.button===0&&window._mcsResizeTop)_mcsResizeTop()"></div>
   <div class="cube" style="top:15%; left:6%"></div>
   <div class="cube" style="top:60%; left:90%; animation-delay:-4s; width:60px; height:60px"></div>
   <div class="cube" style="top:80%; left:12%; animation-delay:-8s; width:26px; height:26px"></div>
@@ -742,6 +792,23 @@
           </div>
         </div>
         <div class="panel">
+          <h4>下载代理</h4>
+          <div class="set-row">
+            <div class="set-desc"><b>启用下载代理</b><span>服务端核心、模组、整合包下载走代理，国内直连官方 CDN 太慢时开启</span></div>
+            <input type="checkbox" id="proxyEnabled">
+          </div>
+          <div class="dav-form" style="margin-top:10px">
+            <div class="full">
+              <label>代理地址</label>
+              <input id="proxyURL" placeholder="http://127.0.0.1:7890　或　socks5://127.0.0.1:1080">
+            </div>
+            <div class="full" style="display:flex; gap:10px">
+              <button class="qbtn main sm" onclick="saveProxy()">保存配置</button>
+              <button class="qbtn ghost sm" onclick="testProxy(this)">测试连接</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
           <h4>邮件通知</h4>
           <div class="set-row">
             <div class="set-desc"><b>启用邮件通知</b><span>开服完成、备份完成、崩溃告警等大事件发邮件提醒（QQ 邮箱填授权码）</span></div>
@@ -904,8 +971,9 @@
 
       <div id="ctab-console">
         <div class="console-out" id="consoleOut"></div>
-        <div id="aiPanel" style="display:none;margin:8px 0;padding:12px 14px;border:1px solid rgba(122,162,255,.35);border-radius:12px;background:rgba(122,162,255,.06)">
-          <div id="aiSummary" style="font-size:13px;color:#c8c4e0;line-height:1.6"></div>
+        <div id="aiPanel" style="display:none;position:relative;margin:8px 0;padding:12px 14px;border:1px solid rgba(122,162,255,.35);border-radius:12px;background:rgba(122,162,255,.06)">
+          <button class="panel-x" style="position:absolute;top:4px;right:4px;line-height:1" title="关闭分析结果" onclick="$('aiPanel').style.display='none'">×</button>
+          <div id="aiSummary" style="font-size:13px;color:#c8c4e0;line-height:1.6;padding-right:26px"></div>
           <div id="aiCauses" style="font-size:12px;color:#9a96b8;margin-top:6px;line-height:1.6"></div>
           <div id="aiActions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"></div>
           <div class="err" id="aiErr"></div>
@@ -978,6 +1046,8 @@
 
       <div id="ctab-mods" style="display:none">
         <p style="color:#9a96b8;font-size:13px">禁用会把文件改名为 .disabled（重启生效），不删除文件</p>
+        <input type="search" id="installedQ" placeholder="搜索已安装的模组 / 插件…（按文件名过滤）"
+               style="margin-top:10px;width:100%" oninput="filterInstalled()">
         <div id="installedList" class="pane-scroll" style="margin-top:10px"><div class="empty-hint">加载中…</div></div>
         <div id="updatesList"></div>
         <div class="err" id="installedErr"></div>
@@ -1353,6 +1423,36 @@ let instances = [];
 let currentId = null;
 let ws = null;
 
+/* ===== GUI 窗口自绘标题栏（window._mcsGui 由 ui_webview.go 注入） ===== */
+if (window._mcsGui) document.body.classList.add('gui');
+
+let guiLastDown = 0;
+function guiDrag(e) {
+  if (e.button !== 0 || !window._mcsDrag) return;
+  const now = Date.now();
+  // 系统拖动循环（WM_NCLBUTTONDOWN）会吃掉 dblclick，双击靠自己计时判断
+  if (now - guiLastDown < 350) { guiLastDown = 0; guiMax(); return; }
+  guiLastDown = now;
+  _mcsDrag();
+}
+
+function guiMax() {
+  if (window._mcsMax) _mcsMax();
+}
+
+// 最大化状态跟着窗口尺寸变化走（按钮点击、双击、Aero Snap 贴顶都覆盖）
+async function guiSyncMax() {
+  if (!window._mcsZoomed) return;
+  const z = await _mcsZoomed();
+  document.body.classList.toggle('max', z);
+  $('guiMaxBtn').textContent = z ? '❐' : '□';
+  $('guiMaxBtn').title = z ? '还原' : '最大化';
+}
+if (window._mcsGui) {
+  window.addEventListener('resize', () => setTimeout(guiSyncMax, 50));
+  window.addEventListener('DOMContentLoaded', guiSyncMax);
+}
+
 const banners = ['b1','b2','b3'];
 const typeLabel = t => ({ paper:'Paper', purpur:'Purpur', fabric:'Fabric', forge:'Forge', neoforge:'NeoForge', modpack:'整合包', generic:'通用' }[t] || t || 'Paper');
 const statusMap = {
@@ -1422,6 +1522,12 @@ function fmtDur(sec) {
   if (d > 0) return d + ' 天 ' + h + ' 小时';
   if (h > 0) return h + ' 小时 ' + m + ' 分';
   return m + ' 分钟';
+}
+
+function fmtSpeed(bps) {
+  if (bps >= 1e6) return (bps/1e6).toFixed(1) + ' MB/s';
+  if (bps >= 1e3) return (bps/1e3).toFixed(0) + ' KB/s';
+  return bps + ' B/s';
 }
 
 function esc(s) {
@@ -1664,9 +1770,11 @@ function render() {
       dp.className = 'dl-prog';
       const pct = it.dlTotal > 0 ? Math.min(100, Math.round(it.dlDone * 100 / it.dlTotal)) : 0;
       const isBytes = it.dlTotal > 10000; // 字节计数才显示 MB，文件计数显示 n/n
-      const right = it.dlTotal > 0
+      const speed = it.dlSpeed > 0 ? fmtSpeed(it.dlSpeed) : '';
+      let right = it.dlTotal > 0
         ? (isBytes ? `${(it.dlDone/1e6).toFixed(1)} / ${(it.dlTotal/1e6).toFixed(1)} MB · ${pct}%` : `${pct}%`)
         : '';
+      if (speed) right = right ? `${speed} · ${right}` : speed;
       dp.innerHTML = `
         <div class="dl-label"><span></span><span>${right}</span></div>
         <div class="dl-bar"><div class="dl-fill ${it.dlTotal > 0 ? '' : 'indet'}" style="width:${pct}%"></div></div>`;
@@ -2690,6 +2798,7 @@ async function loadBackupPage() {
 
 function loadSettingsPage() {
   loadAutoBackup();
+  loadProxy();
   loadMail();
   loadAI();
   loadBootstart();
@@ -2910,9 +3019,30 @@ async function loadInstalled() {
         </div>`;
     }
     $('installedList').innerHTML = html;
+    filterInstalled();
   } catch (e) {
     $('installedList').innerHTML = `<div class="empty-hint">加载失败：${esc(e.message)}</div>`;
   }
+}
+
+// 按文件名过滤已安装列表，顺带隐藏没有匹配项的分组标题
+function filterInstalled() {
+  const q = $('installedQ').value.trim().toLowerCase();
+  const list = $('installedList');
+  let title = null, titleHasHit = false;
+  for (const el of list.children) {
+    if (el.classList.contains('section-title')) {
+      if (title) title.style.display = titleHasHit ? '' : 'none';
+      title = el; titleHasHit = false;
+      continue;
+    }
+    if (!el.classList.contains('bk-row')) continue;
+    const name = (el.querySelector('.fname')?.textContent || '').toLowerCase();
+    const hit = !q || name.includes(q);
+    el.style.display = hit ? '' : 'none';
+    if (hit) titleHasHit = true;
+  }
+  if (title) title.style.display = titleHasHit ? '' : 'none';
 }
 
 async function uploadInstalled(input) {
@@ -4262,6 +4392,43 @@ async function saveBootstart(cb) {
     cb.checked = !cb.checked;
     toast(e.message);
   }
+}
+
+/* ===== 下载代理 ===== */
+async function loadProxy() {
+  try {
+    const c = await api('/proxy');
+    $('proxyEnabled').checked = !!c.enabled;
+    $('proxyURL').value = c.url || '';
+  } catch (e) {}
+}
+
+async function saveProxy() {
+  try {
+    await api('/proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: $('proxyEnabled').checked,
+        url: $('proxyURL').value.trim(),
+      }),
+    });
+    toast('代理配置已保存，即时生效');
+    loadProxy();
+  } catch (e) { toast(e.message); }
+}
+
+async function testProxy(btn) {
+  btn.disabled = true; btn.textContent = '测试中…';
+  try {
+    const r = await api('/proxy/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: $('proxyURL').value.trim() }),
+    });
+    toast('代理连通，访问下载源耗时 ' + r.ms + ' ms');
+  } catch (e) { toast(e.message); }
+  btn.disabled = false; btn.textContent = '测试连接';
 }
 
 /* ===== 邮件通知 ===== */

@@ -57,7 +57,8 @@ type Instance struct {
 	DlLabel    string   `json:"dlLabel,omitempty"`  // downloading 时的进度描述
 	DlDone     int64    `json:"dlDone,omitempty"`
 	DlTotal    int64    `json:"dlTotal,omitempty"`
-	TPS        float64  `json:"tps,omitempty"` // 1m TPS（Paper 系运行中）
+	DlSpeed    int64    `json:"dlSpeed,omitempty"` // 当前下载速度 B/s
+	TPS        float64  `json:"tps,omitempty"`     // 1m TPS（Paper 系运行中）
 }
 
 type runtimeState struct {
@@ -102,6 +103,7 @@ func NewManager(dataDir string) (*Manager, error) {
 	if err := m.load(); err != nil {
 		return nil, err
 	}
+	m.applyProxyConfig(m.loadProxyConfig())
 	m.startAutoBackup()
 	m.startScheduledRestart()
 	m.startTimedCmds()
@@ -249,6 +251,7 @@ func (m *Manager) snapshot(in *Instance) Instance {
 	}
 	if rs.status == "downloading" || rs.status == "starting" {
 		cp.DlLabel, cp.DlDone, cp.DlTotal = rs.console.Progress()
+		cp.DlSpeed = rs.console.Speed()
 	}
 	if (rs.status == "running" || rs.status == "starting") && !rs.startedAt.IsZero() {
 		cp.UptimeSec = int(time.Since(rs.startedAt).Seconds())
