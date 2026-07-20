@@ -54,6 +54,7 @@ Modrinth 搜索安装,按实例的版本和加载器过滤,不兼容有红黄标
 
 ![模组市场](docs/shots/mods.png)
 
+![安装页面](docs/shots/install.png)
 ### 备份
 
 手动 / 定时自动备份,可浏览 zip 内容做局部恢复;删除的服务器进回收站保留 7 天;支持 WebDAV 云盘上传;Paper 核心更新与跨版本升级(强制先备份)
