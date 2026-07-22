@@ -384,6 +384,38 @@
   .modal .actions { display: flex; gap: 12px; margin-top: 24px; justify-content: flex-end; }
   .modal .err { color: #ff5c8a; font-size: 13px; margin-top: 12px; min-height: 18px; }
 
+  /* Steam 搜索下拉 */
+  .search-pop {
+    position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+    background: #1c1830; border: 1px solid rgba(255,255,255,.12);
+    border-radius: 10px; max-height: 320px; overflow-y: auto;
+    z-index: 50; box-shadow: 0 12px 30px rgba(0,0,0,.4);
+  }
+  .search-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+  .search-item:last-child { border-bottom: none; }
+  .search-item:hover { background: rgba(122,162,255,.12); }
+  .search-item img { width: 92px; height: 34px; object-fit: cover; border-radius: 4px; }
+  .search-noicon { width: 92px; height: 34px; background: rgba(255,255,255,.05); border-radius: 4px; display: inline-block; }
+  .search-name { font-size: 13px; color: #e8e5ff; }
+  .search-appid { font-size: 11px; color: #7f7ba0; margin-top: 2px; }
+  .search-hint { cursor: default; color: #7f7ba0; font-size: 13px; justify-content: center; }
+  .search-hint:hover { background: transparent; }
+
+  /* generic 类型下隐藏 MC 专属 UI（props 保留：generic 需要在这里编辑启动/停止命令） */
+  body.inst-generic #ctab-console .quick-cmds,
+  body.inst-generic .inst-side button[data-ctab="players"],
+  body.inst-generic .inst-side button[data-ctab="mods"],
+  body.inst-generic .inst-side button[data-ctab="stats"] { display: none !important; }
+  body.inst-generic #consoleCmd { display: none; }
+  body.inst-generic #consoleCmd + button { display: none; }
+  body.inst-generic .console-in::before {
+    content: "此服务器为非 Minecraft 类型，控制台仅显示输出（如需交互请从对应服务端配置)";
+    display: block; color: #6e6a8e; font-size: 12px; padding: 8px 4px;
+  }
+
   .console-modal { width: min(860px, 94vw); display: flex; flex-direction: column; }
 
   /* ===== 实例详情页 ===== */
@@ -959,9 +991,20 @@
         <option value="custom">自定义命令（已有服务端程序）</option>
       </select>
       <div id="gSteamRow">
-        <label>Steam 应用 ID（服务端 AppID）</label>
-        <input id="gAppId" type="number" placeholder="饥荒联机 343050 / 幻兽帕鲁 2394010 / CS2 730">
-        <p style="color:#6e6a8e;font-size:12px;margin:4px 0 0">在 steamdb.info 搜「游戏名 dedicated server」可查 AppID</p>
+        <label>按名字搜索（中文/英文都行）</label>
+        <div style="position:relative">
+          <input id="gAppSearch" placeholder="例如 幻兽帕鲁 / palworld / dont starve"
+                 oninput="steamSearchDebounced(this.value)"
+                 onfocus="if($('gAppSearchResults').children.length)$('gAppSearchResults').style.display=''"
+                 autocomplete="off">
+          <div id="gAppSearchResults" class="search-pop" style="display:none"></div>
+        </div>
+        <label style="margin-top:8px">Steam 应用 ID（服务端 AppID）</label>
+        <input id="gAppId" type="number" placeholder="点上面搜索选择，或手动输入">
+        <p style="color:#6e6a8e;font-size:12px;margin:4px 0 0">
+          ⚠️ 搜索返回的通常是<b>游戏本体 AppID</b>，部分游戏的<b>专用服务器 AppID 不同</b>（如帕鲁本体 1621890、服务端 2394010）。<br>
+          如装完显示"目录为空"，请查 <a href="https://steamdb.info" target="_blank" style="color:#7aa2ff">steamdb.info</a> 搜「游戏名 dedicated server」修正 AppID。
+        </p>
       </div>
       <div id="gCmdRow" style="display:none">
         <label>启动命令（在实例目录下执行）</label>
@@ -1964,8 +2007,77 @@ function closeCreate() { $('createOverlay').classList.remove('show'); }
 /* ===== 其他游戏 / 通用服务器 ===== */
 function openGeneric() {
   $('gErr').textContent = '';
+  $('gAppSearch').value = '';
+  $('gAppSearchResults').innerHTML = '';
+  $('gAppSearchResults').style.display = 'none';
   $('genericOverlay').classList.add('show');
 }
+
+let steamSearchTimer = 0;
+let steamSearchSeq = 0;
+function steamSearchDebounced(v) {
+  clearTimeout(steamSearchTimer);
+  const term = v.trim();
+  const pop = $('gAppSearchResults');
+  if (!term) { pop.style.display = 'none'; pop.innerHTML = ''; return; }
+  steamSearchTimer = setTimeout(async () => {
+    const seq = ++steamSearchSeq;
+    pop.style.display = '';
+    pop.innerHTML = '<div class="search-item search-hint">搜索中…</div>';
+    try {
+      const items = await api('/steam/search?q=' + encodeURIComponent(term));
+      if (seq !== steamSearchSeq) return;
+      if (!items || !items.length) {
+        pop.innerHTML = '<div class="search-item search-hint">未找到，检查拼写或直接手填 AppID</div>';
+        return;
+      }
+      pop.innerHTML = items.slice(0, 15).map(it => `
+        <div class="search-item" onclick="pickSteamApp(${it.appid}, ${JSON.stringify(it.name)})">
+          ${it.icon ? `<img src="${esc(it.icon)}" alt="">` : '<span class="search-noicon"></span>'}
+          <div class="search-meta">
+            <div class="search-name">${esc(it.name)}</div>
+            <div class="search-appid">AppID ${it.appid}</div>
+          </div>
+        </div>
+      `).join('');
+    } catch (e) {
+      if (seq !== steamSearchSeq) return;
+      pop.innerHTML = '<div class="search-item search-hint">搜索失败：' + esc(e.message) + '</div>';
+    }
+  }, 300);
+}
+// 游戏本体 AppID → 已知专用服务器 AppID 的常用映射（与后端 knownDedicatedServer 保持同步）
+const GAME_TO_DS = {
+  550:     { ds: 222860,  name: 'L4D2 Dedicated Server' },
+  4000:    { ds: 4020,    name: "Garry's Mod DS" },
+  107410:  { ds: 233780,  name: 'ARMA 3 DS' },
+  221100:  { ds: 223350,  name: 'DayZ DS' },
+  251570:  { ds: 294420,  name: '7 Days to Die DS' },
+  304930:  { ds: 306110,  name: 'Unturned DS' },
+  346110:  { ds: 376030,  name: 'ARK: SE DS' },
+  892970:  { ds: 896660,  name: 'Valheim DS' },
+  1621890: { ds: 2394010, name: 'Palworld Dedicated Server' },
+};
+
+function pickSteamApp(appid, name) {
+  const hit = GAME_TO_DS[appid];
+  const finalAppId = hit ? hit.ds : appid;
+  $('gAppId').value = finalAppId;
+  $('gAppSearch').value = name;
+  $('gAppSearchResults').style.display = 'none';
+  if (!$('gName').value.trim()) $('gName').value = name;
+  if (hit) {
+    $('gErr').innerHTML = `<span style="color:#7aa2ff">已自动切换到「${esc(hit.name)}」的 AppID <b>${hit.ds}</b>（游戏本体 ${appid} 不能匿名下载）</span>`;
+  } else {
+    $('gErr').textContent = '';
+  }
+}
+document.addEventListener('click', ev => {
+  const pop = $('gAppSearchResults');
+  if (!pop || pop.style.display === 'none') return;
+  if (ev.target.closest('#gAppSearchResults') || ev.target.closest('#gAppSearch')) return;
+  pop.style.display = 'none';
+});
 
 async function doGenericCreate() {
   const name = $('gName').value.trim();
@@ -2304,10 +2416,14 @@ function openConsole(id, tab) {
   $('consoleTitle').textContent = it ? it.name : '控制台';
   $('instMeta').textContent = it ? `${typeLabel(it.type)} ${it.version || ''} · 端口 ${it.port} · 内存 ${it.memoryMB}MB` : '';
   $('consoleOut').innerHTML = '';
+  document.body.classList.toggle('inst-generic', it && it.type === 'generic');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('show'));
   document.querySelectorAll('nav .links span').forEach(s => s.classList.remove('active'));
   $('page-inst').classList.add('show');
   window.scrollTo(0, 0);
+  // generic 类型如果误落到 MC 专属 tab，回落到控制台
+  const mcOnly = new Set(['players', 'mods', 'stats']);
+  if (it && it.type === 'generic' && mcOnly.has(tab)) tab = 'console';
   setConsoleTab(tab || 'console');
   updateConsoleBtn();
   if (ws) { ws.onclose = null; ws.close(); }
@@ -2525,6 +2641,7 @@ function closeConsole() {
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   stopChatPoll();
   currentId = null;
+  document.body.classList.remove('inst-generic');
   showPage('home');
 }
 

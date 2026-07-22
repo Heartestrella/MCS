@@ -5,3 +5,4 @@ data/
 panel.log
 scripts/node_modules/
 PRODUCT.md
+site/*

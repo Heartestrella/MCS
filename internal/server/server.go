@@ -46,6 +46,7 @@ func Run() {
 	mux.HandleFunc("POST /api/instances/import", mgr.handleImport)
 	mux.HandleFunc("POST /api/instances/generic", mgr.handleGenericCreate)
 	mux.HandleFunc("PATCH /api/instances/{id}/generic", mgr.handleGenericUpdate)
+	mux.HandleFunc("GET /api/steam/search", mgr.handleSteamSearch)
 	mux.HandleFunc("GET /api/instances/{id}", mgr.handleGet)
 	mux.HandleFunc("DELETE /api/instances/{id}", mgr.handleDelete)
 	mux.HandleFunc("PATCH /api/instances/{id}", mgr.handleUpdate)
